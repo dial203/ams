@@ -200,12 +200,24 @@ def get_series(
     m = get_metric_by_slug(db, p.org_id, slug)
     if p.is_athlete and not m.athlete_visible:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="metric not found")
-    if not p.is_athlete:
-        forms = source_forms(db, MetricEngine(db, p.org_id, [athlete.id]), m)
-        if not all(p.can_read_form_data(f, athlete.id) for f in forms):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="the metric's source form is not readable for you")
+    forms = source_forms(db, MetricEngine(db, p.org_id, [athlete.id]), m)
+    if not p.is_athlete and not all(p.can_read_form_data(f, athlete.id) for f in forms):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="the metric's source form is not readable for you")
     s, e = _range(start, end, p.today)
-    return metric_series(db, p, m, athlete.id, s, e)
+    result = metric_series(db, p, m, athlete.id, s, e)
+    sensitive = [f for f in forms if f.sensitivity in ("medical", "research")]
+    if sensitive:  # derived values of medical/research data are reads of that data
+        audit.record(
+            db,
+            org_id=p.org_id,
+            user_id=p.user_id,
+            action="metric.read",
+            entity_type="athlete",
+            entity_id=athlete.id,
+            details={"metric": m.slug, "form_ids": [str(f.id) for f in sensitive], "start": s, "end": e},
+        )
+        db.commit()
+    return result
 
 
 @router.get("/dashboards/readiness", response_model=ReadinessBoard)

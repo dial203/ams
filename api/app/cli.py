@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 import uuid
 from typing import Annotated
 
@@ -107,9 +106,10 @@ def seed_demo_cmd(
     today: Annotated[str | None, typer.Option(help="Anchor date YYYY-MM-DD (default: today in New York)")] = None,
 ) -> None:
     """Create the "Demo Performance" organization with ~6 weeks of synthetic data."""
+    from app.config import settings
     from app.seed import DemoExistsError, seed_demo
 
-    pw = password or os.environ.get("AMS_DEMO_PASSWORD") or DEFAULT_DEMO_PASSWORD
+    pw = password or settings.ams_demo_password or DEFAULT_DEMO_PASSWORD
     anchor = dt.date.fromisoformat(today) if today else None
     db = SessionLocal()
     try:

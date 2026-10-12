@@ -200,6 +200,12 @@ def test_series_permissions(client: TestClient, db: Session) -> None:
     url = f"{API}/orgs/{org.id}/metrics/med_val/series"
     assert client.get(url, headers=coach.headers, params={"athlete_id": str(a.id)}).status_code == 403
     assert client.get(url, headers=admin.headers, params={"athlete_id": str(a.id)}).status_code == 200
+    from sqlalchemy import select
+
+    from app.models import AuditLog
+
+    entry = db.scalar(select(AuditLog).where(AuditLog.action == "metric.read"))
+    assert entry is not None and entry.entity_id == a.id and entry.details["metric"] == "med_val"
     assert (
         client.get(
             f"{API}/orgs/{org.id}/metrics/sleep_duration/series",

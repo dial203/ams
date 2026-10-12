@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     reminder_lead_minutes: int = 60
 
     celery_task_always_eager: bool = False
+    ams_demo_password: str | None = None
     log_level: str = "INFO"
 
     @property

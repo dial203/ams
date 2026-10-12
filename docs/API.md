@@ -16,6 +16,7 @@ the code.
   required; further checks per route are listed as **Access**.
 - Lists: `?limit=` (default 50, max 500) and `?offset=`; response
   `Page<T> = { items: T[], total: number }`.
+- A `POST` that creates a resource answers 201; other successes are 200, or 204 without a body.
 - Errors: FastAPI shape `{ "detail": string }` with 400/401/403/404/409. Request-body
   validation errors are 422 with FastAPI's default list. **Submission validation**
   failures are 422 with
@@ -154,7 +155,7 @@ type BulkSubmissionCreate = {
 type BulkSubmissionResult = {
   created: Submission[];
   errors: { athlete_id: UUID; field_errors: Record<string, string> }[];   // entries that failed; the rest are saved
-};
+};   // besides FORMS.md codes: { athlete_id: "not_found" | "forbidden" } and { local_date: "duplicate" }
 
 // ---- Imports
 type ImportPreview = {
@@ -190,7 +191,8 @@ type WearableConnection = {
   devices: string[];                                         // humanized observed devices, most recent first
 };
 type WearableStatus = { linked: boolean; ow_user_id: UUID | null; connections: WearableConnection[] };
-type ConnectRequest = { provider: string; account_type?: string | null; account_label?: string | null; redirect_uri?: string | null };
+type ConnectRequest = { provider: string; account_type?: string | null; account_label?: string | null; redirect_uri?: string | null;
+                        new_account?: boolean | null };   // true: add another account with this provider (OW new_account)
 type ConnectResponse = { authorization_url: string };
 type SdkTokenResponse = { access_token: string; refresh_token: string; expires_in: number; ow_base_url: string; ow_user_id: UUID };
 
@@ -254,7 +256,7 @@ type AuditEntry = { id: UUID; user_id: UUID | null; action: string; entity_type:
 | GET | `/orgs/{org_id}` | → `Organization` | member |
 | PATCH | `/orgs/{org_id}` | `{name?, timezone?, settings?}` → `Organization` | admin |
 | GET | `/orgs/{org_id}/members` | → `Member[]` | admin, staff (read) |
-| PATCH | `/orgs/{org_id}/members/{user_id}` | `{role}` → `Member` | admin; cannot demote the last owner |
+| PATCH | `/orgs/{org_id}/members/{user_id}` | `{role}` → `Member` | admin; cannot demote the last owner (409); only an owner grants or revokes `owner` |
 | DELETE | `/orgs/{org_id}/members/{user_id}` | → 204 | admin |
 | GET | `/orgs/{org_id}/invitations` | → `Invitation[]` (pending) | admin |
 | POST | `/orgs/{org_id}/invitations` | `{email, role, athlete_id?}` → `Invitation` | admin. `role: "athlete"` requires `athlete_id` |
@@ -278,7 +280,7 @@ type AuditEntry = { id: UUID; user_id: UUID | null; action: string; entity_type:
 
 | Method | Path | Body → Response | Access |
 |---|---|---|---|
-| GET | `/orgs/{org_id}/athletes` | `?group_id&q&status&limit&offset` → `Page<Athlete>` | visible athletes only. `q` matches code, names, email (names/email only where identifiable) |
+| GET | `/orgs/{org_id}/athletes` | `?group_id&q&status&limit&offset` → `Page<Athlete>` | visible athletes only. `q` matches code, names, email (names/email only where identifiable). Without `status`, archived athletes are left out; `group_id` includes descendant groups |
 | POST | `/orgs/{org_id}/athletes` | `AthleteCreate` → `Athlete` | admin, or staff with write on every listed group |
 | GET | `/orgs/{org_id}/athletes/{athlete_id}` | → `Athlete` | visible |
 | PATCH | `/orgs/{org_id}/athletes/{athlete_id}` | `AthleteUpdate` → `Athlete` | write on athlete |
@@ -316,7 +318,7 @@ gravity).
 | POST | `/orgs/{org_id}/submissions` | `SubmissionCreate` → `Submission` (201) | write on athlete + form sensitivity. 422 field errors. 409 when the form disallows multiple per day and one exists for that `local_date` |
 | POST | `/orgs/{org_id}/submissions/bulk` | `BulkSubmissionCreate` → `BulkSubmissionResult` | same, per entry |
 | GET | `/orgs/{org_id}/submissions/{id}` | → `Submission` | as list |
-| PATCH | `/orgs/{org_id}/submissions/{id}` | `{values?, observed_at?, local_date?}` → `Submission` | write. Validated against the submission's own form version. Audited with before/after |
+| PATCH | `/orgs/{org_id}/submissions/{id}` | `{values?, observed_at?, local_date?}` → `Submission` | write. `values` replaces the stored values. Validated against the submission's own form version. Audited with before/after |
 | DELETE | `/orgs/{org_id}/submissions/{id}` | → 204 | write. Soft delete, audited |
 | GET | `/orgs/{org_id}/submissions/export` | `?form_id` (req) `&group_id&start&end&deidentified=false` → `text/csv` | read. One row per submission: `submission_id, athlete_code, [athlete_name], local_date, observed_at, source, form_version, <fields...>, <calculated...>`. Name column omitted when `deidentified=true` or masked |
 
@@ -353,9 +355,9 @@ All require the caller to be an athlete in the org (`membership.athlete_id`).
 | GET | `/orgs/{org_id}/athletes/{athlete_id}/wearables` | → `WearableStatus` | visible |
 | POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/link` | → `WearableStatus` | write. Idempotent; creates the OW user |
 | POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/connect` | `ConnectRequest` → `ConnectResponse` | write. Links first if needed |
-| POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/refresh` | `?days=7` → `{updated: number}` | write. Pulls OW daily summaries into `wearable_daily` now |
+| POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/refresh` | `?days=7` → `{updated: number}` | write. Pulls OW daily summaries into `wearable_daily` now (409 when not linked) |
 | GET | `/orgs/{org_id}/athletes/{athlete_id}/wearables/daily` | `?start&end&metrics=a,b` → `WearableDailyPoint[]` | visible |
-| POST | `/integrations/open-wearables/webhook` | svix-signed OW event → 204 | Public; verified with `OW_WEBHOOK_SECRET` |
+| POST | `/integrations/open-wearables/webhook` | svix-signed OW event → 204 | Public; verified with `OW_WEBHOOK_SECRET` (401 bad or stale signature, 503 when unset). Unknown OW users are a no-op |
 
 ### Metrics and dashboards
 
@@ -402,4 +404,5 @@ All with header `X-Open-Wearables-API-Key: $OW_API_KEY` unless noted.
 | Connect URL | `GET /api/v1/oauth/{provider}/authorize?user_id&redirect_uri&new_account&account_type&account_label` |
 | Connections | `GET /api/v1/users/{user_id}/connections` |
 | SDK token | `POST /api/v1/users/{user_id}/token` body `{app_id: $OW_APP_ID, app_secret: $OW_APP_SECRET}` (no API key) |
-| Daily data | `GET /api/v1/users/{user_id}/summaries/{sleep,recovery,activity,body}?start_date&end_date` (OW's default `filter_by_priority=true` on summaries) |
+| Daily data | `GET /api/v1/users/{user_id}/summaries/{sleep,recovery,activity}?start_date&end_date` (OW's default `filter_by_priority=true` on summaries) |
+| Weight / body fat | `GET /api/v1/users/{user_id}/timeseries?types=weight,body_fat_percentage&start_time&end_time&resolution=raw` (`/summaries/body` carries no measurement dates) |
