@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.vite
+**/coverage
+**/test-results
+**/playwright-report
+api
+mobile/ios
+mobile/android
+.git
