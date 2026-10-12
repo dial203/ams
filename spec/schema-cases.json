@@ -1,0 +1,105 @@
+{
+  "description": "Schema validation conformance cases. See docs/FORMS.md 'Schema validation'. Each case runs validate_schema(schema) and compares the sorted set of error `path`s to `error_paths` (messages are free text and not compared). An empty list means the schema is valid.",
+  "cases": [
+    {
+      "name": "valid schema with chained calculations and visibility",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "a", "type": "number", "label": "A"},
+        {"key": "b", "type": "calculated", "label": "B", "expression": "a * 2"},
+        {"key": "c", "type": "calculated", "label": "C", "expression": "b + a"},
+        {"key": "d", "type": "text", "label": "D", "visible_if": "c > 10"}
+      ]}]},
+      "error_paths": []
+    },
+    {
+      "name": "wrong schema_version",
+      "schema": {"schema_version": 2, "sections": [{"key": "s", "title": "S", "fields": [{"key": "a", "type": "number", "label": "A"}]}]},
+      "error_paths": ["schema_version"]
+    },
+    {
+      "name": "section without fields",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": []}]},
+      "error_paths": ["sections/0/fields"]
+    },
+    {
+      "name": "duplicate section key and duplicate field key across sections (later occurrence is reported)",
+      "schema": {"schema_version": 1, "sections": [
+        {"key": "s", "title": "S", "fields": [{"key": "a", "type": "number", "label": "A"}]},
+        {"key": "s", "title": "S2", "fields": [{"key": "a", "type": "text", "label": "A again"}]}
+      ]},
+      "error_paths": ["sections/1/fields/0/key", "sections/1/key"]
+    },
+    {
+      "name": "bad key pattern and reserved words",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "Bad-Key", "type": "number", "label": "A"},
+        {"key": "sum", "type": "number", "label": "B"},
+        {"key": "and", "type": "number", "label": "C"},
+        {"key": "_x", "type": "number", "label": "D"}
+      ]}]},
+      "error_paths": ["sections/0/fields/0/key", "sections/0/fields/1/key", "sections/0/fields/2/key", "sections/0/fields/3/key"]
+    },
+    {
+      "name": "unknown type and missing label",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "a", "type": "slider", "label": "A"},
+        {"key": "b", "type": "number"}
+      ]}]},
+      "error_paths": ["sections/0/fields/0/type", "sections/0/fields/1/label"]
+    },
+    {
+      "name": "type-specific requirements",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "sc", "type": "scale", "label": "Scale", "min": 5, "max": 5},
+        {"key": "se", "type": "select", "label": "Select", "options": []},
+        {"key": "ms", "type": "multiselect", "label": "Multi", "options": [{"value": "x", "label": "X"}, {"value": "x", "label": "X again"}]},
+        {"key": "mixed", "type": "select", "label": "Mixed", "options": [{"value": 1, "label": "One"}, {"value": "two", "label": "Two"}]},
+        {"key": "calc", "type": "calculated", "label": "Calc"}
+      ]}]},
+      "error_paths": ["sections/0/fields/0/max", "sections/0/fields/1/options", "sections/0/fields/2/options", "sections/0/fields/3/options", "sections/0/fields/4/expression"]
+    },
+    {
+      "name": "expression parse error, unknown reference, reference to info field",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "note", "type": "info", "label": "Note"},
+        {"key": "a", "type": "number", "label": "A"},
+        {"key": "p", "type": "calculated", "label": "P", "expression": "a +"},
+        {"key": "q", "type": "calculated", "label": "Q", "expression": "a + missing"},
+        {"key": "r", "type": "number", "label": "R", "visible_if": "note == null"},
+        {"key": "t", "type": "calculated", "label": "T", "expression": "nofn(a)"}
+      ]}]},
+      "error_paths": ["sections/0/fields/2/expression", "sections/0/fields/3/expression", "sections/0/fields/4/visible_if", "sections/0/fields/5/expression"]
+    },
+    {
+      "name": "calculation cycle reports every field in the cycle",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "a", "type": "number", "label": "A"},
+        {"key": "x", "type": "calculated", "label": "X", "expression": "y + a"},
+        {"key": "y", "type": "calculated", "label": "Y", "expression": "z * 2"},
+        {"key": "z", "type": "calculated", "label": "Z", "expression": "x - 1"},
+        {"key": "ok", "type": "calculated", "label": "OK", "expression": "a * 3"}
+      ]}]},
+      "error_paths": ["sections/0/fields/1/expression", "sections/0/fields/2/expression", "sections/0/fields/3/expression"]
+    },
+    {
+      "name": "self-referencing calculation is a cycle",
+      "schema": {"schema_version": 1, "sections": [{"key": "s", "title": "S", "fields": [
+        {"key": "x", "type": "calculated", "label": "X", "expression": "x + 1"}
+      ]}]},
+      "error_paths": ["sections/0/fields/0/expression"]
+    },
+    {
+      "name": "visible_if referencing own field, and section visible_if referencing its own field",
+      "schema": {"schema_version": 1, "sections": [
+        {"key": "s", "title": "S", "fields": [
+          {"key": "a", "type": "number", "label": "A", "visible_if": "a > 1"},
+          {"key": "b", "type": "boolean", "label": "B"}
+        ]},
+        {"key": "t", "title": "T", "visible_if": "c == true and b", "fields": [
+          {"key": "c", "type": "boolean", "label": "C"}
+        ]}
+      ]},
+      "error_paths": ["sections/0/fields/0/visible_if", "sections/1/visible_if"]
+    }
+  ]
+}

@@ -1,0 +1,908 @@
+{
+  "description": "Form evaluation and validation conformance cases. See docs/FORMS.md. Each case runs validate(schemas[case.schema], case.values) and compares: ok, errors (exact map), values (exact map), computed (exact map, numbers with relative tolerance 1e-9), and hidden (set of hidden field keys, order-insensitive).",
+  "schemas": {
+    "wellness": {
+      "schema_version": 1,
+      "sections": [
+        {
+          "key": "wellness",
+          "title": "This morning",
+          "fields": [
+            {
+              "key": "sleep_quality",
+              "type": "scale",
+              "label": "Sleep quality",
+              "required": true,
+              "min": 1,
+              "max": 7
+            },
+            {
+              "key": "fatigue",
+              "type": "scale",
+              "label": "Fatigue",
+              "required": true,
+              "min": 1,
+              "max": 7
+            },
+            {
+              "key": "stress",
+              "type": "scale",
+              "label": "Stress",
+              "required": true,
+              "min": 1,
+              "max": 7
+            },
+            {
+              "key": "soreness",
+              "type": "scale",
+              "label": "Muscle soreness",
+              "required": true,
+              "min": 1,
+              "max": 7
+            },
+            {
+              "key": "hooper_total",
+              "type": "calculated",
+              "label": "Hooper index",
+              "expression": "sum(sleep_quality, fatigue, stress, soreness)",
+              "decimals": 0
+            },
+            {
+              "key": "sleep_hours",
+              "type": "number",
+              "label": "Hours slept",
+              "min": 0,
+              "max": 24,
+              "unit": "h"
+            }
+          ]
+        },
+        {
+          "key": "pain",
+          "title": "Pain",
+          "fields": [
+            {
+              "key": "has_pain",
+              "type": "boolean",
+              "label": "Any pain or injury?",
+              "required": true
+            },
+            {
+              "key": "pain_location",
+              "type": "multiselect",
+              "label": "Where?",
+              "required": true,
+              "visible_if": "has_pain == true",
+              "options": [
+                {
+                  "value": "ankle",
+                  "label": "Ankle"
+                },
+                {
+                  "value": "knee",
+                  "label": "Knee"
+                },
+                {
+                  "value": "hip",
+                  "label": "Hip"
+                },
+                {
+                  "value": "back",
+                  "label": "Back"
+                }
+              ],
+              "max_selected": 2
+            },
+            {
+              "key": "pain_score",
+              "type": "scale",
+              "label": "Pain (0-10)",
+              "required": true,
+              "min": 0,
+              "max": 10,
+              "visible_if": "has_pain"
+            }
+          ]
+        }
+      ]
+    },
+    "session": {
+      "schema_version": 1,
+      "sections": [
+        {
+          "key": "session",
+          "title": "Session",
+          "fields": [
+            {
+              "key": "session_type",
+              "type": "select",
+              "label": "Type",
+              "required": true,
+              "options": [
+                {
+                  "value": "field",
+                  "label": "Field"
+                },
+                {
+                  "value": "gym",
+                  "label": "Gym"
+                },
+                {
+                  "value": "rest",
+                  "label": "Rest"
+                }
+              ]
+            },
+            {
+              "key": "rpe",
+              "type": "select",
+              "label": "Session RPE (CR-10)",
+              "required": true,
+              "visible_if": "session_type != 'rest'",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Rest"
+                },
+                {
+                  "value": 1,
+                  "label": "Very, very easy"
+                },
+                {
+                  "value": 2,
+                  "label": "Easy"
+                },
+                {
+                  "value": 3,
+                  "label": "Moderate"
+                },
+                {
+                  "value": 4,
+                  "label": "Somewhat hard"
+                },
+                {
+                  "value": 5,
+                  "label": "Hard"
+                },
+                {
+                  "value": 6,
+                  "label": "6"
+                },
+                {
+                  "value": 7,
+                  "label": "Very hard"
+                },
+                {
+                  "value": 8,
+                  "label": "8"
+                },
+                {
+                  "value": 9,
+                  "label": "9"
+                },
+                {
+                  "value": 10,
+                  "label": "Maximal"
+                }
+              ]
+            },
+            {
+              "key": "duration",
+              "type": "duration",
+              "label": "Duration",
+              "required": true,
+              "min": 0,
+              "max": 600,
+              "unit": "min",
+              "visible_if": "session_type != 'rest'"
+            },
+            {
+              "key": "srpe",
+              "type": "calculated",
+              "label": "Session load",
+              "expression": "if(session_type == 'rest', 0, rpe * duration)",
+              "unit": "AU"
+            },
+            {
+              "key": "load_band",
+              "type": "calculated",
+              "label": "Band",
+              "expression": "if(srpe >= 600, 'high', if(srpe >= 300, 'moderate', 'low'))"
+            },
+            {
+              "key": "hard_reason",
+              "type": "textarea",
+              "label": "What made it hard?",
+              "visible_if": "load_band == 'high'",
+              "required": true,
+              "max_length": 20
+            },
+            {
+              "key": "duration_h",
+              "type": "calculated",
+              "label": "Duration (h)",
+              "expression": "duration / 60",
+              "decimals": 1,
+              "unit": "h"
+            },
+            {
+              "key": "duration_back",
+              "type": "calculated",
+              "label": "Minutes from rounded hours",
+              "expression": "duration_h * 60"
+            }
+          ]
+        }
+      ]
+    },
+    "types": {
+      "schema_version": 1,
+      "sections": [
+        {
+          "key": "main",
+          "title": "Main",
+          "fields": [
+            {
+              "key": "note",
+              "type": "info",
+              "label": "Read me",
+              "help": "Instructions"
+            },
+            {
+              "key": "mass",
+              "type": "number",
+              "label": "Body mass",
+              "min": 30,
+              "max": 200,
+              "unit": "kg",
+              "decimals": 1
+            },
+            {
+              "key": "rating",
+              "type": "scale",
+              "label": "Rating",
+              "min": 0,
+              "max": 10,
+              "step": 0.5
+            },
+            {
+              "key": "test_date",
+              "type": "date",
+              "label": "Date",
+              "min": "2024-01-01",
+              "max": "2030-12-31"
+            },
+            {
+              "key": "start_time",
+              "type": "time",
+              "label": "Start"
+            },
+            {
+              "key": "recorded_at",
+              "type": "datetime",
+              "label": "Recorded"
+            },
+            {
+              "key": "comment",
+              "type": "text",
+              "label": "Comment",
+              "max_length": 5
+            },
+            {
+              "key": "tags",
+              "type": "multiselect",
+              "label": "Tags",
+              "min_selected": 2,
+              "options": [
+                {
+                  "value": "a",
+                  "label": "A"
+                },
+                {
+                  "value": "b",
+                  "label": "B"
+                },
+                {
+                  "value": "c",
+                  "label": "C"
+                }
+              ]
+            },
+            {
+              "key": "level",
+              "type": "select",
+              "label": "Level",
+              "options": [
+                {
+                  "value": 1,
+                  "label": "One"
+                },
+                {
+                  "value": 2,
+                  "label": "Two"
+                }
+              ]
+            },
+            {
+              "key": "flag",
+              "type": "boolean",
+              "label": "Flag"
+            }
+          ]
+        },
+        {
+          "key": "extra",
+          "title": "Extra",
+          "visible_if": "flag == true",
+          "fields": [
+            {
+              "key": "extra_value",
+              "type": "number",
+              "label": "Extra",
+              "required": true
+            },
+            {
+              "key": "extra_double",
+              "type": "calculated",
+              "label": "Double",
+              "expression": "extra_value * 2"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "complete wellness, no pain",
+      "schema": "wellness",
+      "values": {
+        "sleep_quality": 3,
+        "fatigue": 4,
+        "stress": 2,
+        "soreness": 5,
+        "sleep_hours": 7.5,
+        "has_pain": false
+      },
+      "expected": {
+        "ok": true,
+        "errors": {},
+        "values": {
+          "sleep_quality": 3,
+          "fatigue": 4,
+          "stress": 2,
+          "soreness": 5,
+          "sleep_hours": 7.5,
+          "has_pain": false
+        },
+        "computed": {
+          "hooper_total": 14
+        },
+        "hidden": [
+          "pain_location",
+          "pain_score"
+        ]
+      }
+    },
+    {
+      "name": "hidden values are dropped, not validated",
+      "schema": "wellness",
+      "values": {
+        "sleep_quality": 3,
+        "fatigue": 4,
+        "stress": 2,
+        "soreness": 5,
+        "has_pain": false,
+        "pain_location": [
+          "knee",
+          "knee",
+          "foot"
+        ],
+        "pain_score": 99
+      },
+      "expected": {
+        "ok": true,
+        "errors": {},
+        "values": {
+          "sleep_quality": 3,
+          "fatigue": 4,
+          "stress": 2,
+          "soreness": 5,
+          "has_pain": false
+        },
+        "computed": {
+          "hooper_total": 14
+        },
+        "hidden": [
+          "pain_location",
+          "pain_score"
+        ]
+      }
+    },
+    {
+      "name": "missing required fields; partial sum skips nulls",
+      "schema": "wellness",
+      "values": {
+        "sleep_quality": 3,
+        "fatigue": 4
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "stress": "required",
+          "soreness": "required",
+          "has_pain": "required"
+        },
+        "values": {
+          "sleep_quality": 3,
+          "fatigue": 4
+        },
+        "computed": {
+          "hooper_total": 7
+        },
+        "hidden": [
+          "pain_location",
+          "pain_score"
+        ]
+      }
+    },
+    {
+      "name": "pain branch visible and validated",
+      "schema": "wellness",
+      "values": {
+        "sleep_quality": 1,
+        "fatigue": 1,
+        "stress": 1,
+        "soreness": 7,
+        "has_pain": true,
+        "pain_location": [
+          "knee",
+          "hip",
+          "back"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "pain_location": "out_of_range",
+          "pain_score": "required"
+        },
+        "values": {
+          "sleep_quality": 1,
+          "fatigue": 1,
+          "stress": 1,
+          "soreness": 7,
+          "has_pain": true,
+          "pain_location": [
+            "knee",
+            "hip",
+            "back"
+          ]
+        },
+        "computed": {
+          "hooper_total": 10
+        },
+        "hidden": []
+      }
+    },
+    {
+      "name": "multiselect invalid option and duplicates",
+      "schema": "wellness",
+      "values": {
+        "sleep_quality": 1,
+        "fatigue": 1,
+        "stress": 1,
+        "soreness": 1,
+        "has_pain": true,
+        "pain_location": [
+          "knee",
+          "knee"
+        ],
+        "pain_score": 3
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "pain_location": "invalid_option"
+        },
+        "values": {
+          "sleep_quality": 1,
+          "fatigue": 1,
+          "stress": 1,
+          "soreness": 1,
+          "has_pain": true,
+          "pain_location": [
+            "knee",
+            "knee"
+          ],
+          "pain_score": 3
+        },
+        "computed": {
+          "hooper_total": 4
+        },
+        "hidden": []
+      }
+    },
+    {
+      "name": "scale out of range, off-grid, and wrong type",
+      "schema": "wellness",
+      "values": {
+        "sleep_quality": 0,
+        "fatigue": 3.5,
+        "stress": "2",
+        "soreness": true,
+        "has_pain": false
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "sleep_quality": "out_of_range",
+          "fatigue": "invalid_step",
+          "stress": "invalid_type",
+          "soreness": "invalid_type"
+        },
+        "values": {
+          "sleep_quality": 0,
+          "fatigue": 3.5,
+          "stress": "2",
+          "soreness": true,
+          "has_pain": false
+        },
+        "computed": {
+          "hooper_total": null
+        },
+        "hidden": [
+          "pain_location",
+          "pain_score"
+        ]
+      }
+    },
+    {
+      "name": "unknown field reported; calculated key silently ignored; empty string is null",
+      "schema": "wellness",
+      "values": {
+        "sleep_quality": 2,
+        "fatigue": 2,
+        "stress": 2,
+        "soreness": 2,
+        "has_pain": false,
+        "hooper_total": 999,
+        "mood": 3,
+        "sleep_hours": ""
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "mood": "unknown_field"
+        },
+        "values": {
+          "sleep_quality": 2,
+          "fatigue": 2,
+          "stress": 2,
+          "soreness": 2,
+          "has_pain": false
+        },
+        "computed": {
+          "hooper_total": 8
+        },
+        "hidden": [
+          "pain_location",
+          "pain_score"
+        ]
+      }
+    },
+    {
+      "name": "sRPE chain, moderate band",
+      "schema": "session",
+      "values": {
+        "session_type": "field",
+        "rpe": 5,
+        "duration": 75
+      },
+      "expected": {
+        "ok": true,
+        "errors": {},
+        "values": {
+          "session_type": "field",
+          "rpe": 5,
+          "duration": 75
+        },
+        "computed": {
+          "srpe": 375,
+          "load_band": "moderate",
+          "duration_h": 1.3,
+          "duration_back": 78
+        },
+        "hidden": [
+          "hard_reason"
+        ]
+      }
+    },
+    {
+      "name": "visibility driven by a calculated field; downstream calculation sees the rounded value",
+      "schema": "session",
+      "values": {
+        "session_type": "field",
+        "rpe": 8,
+        "duration": 95,
+        "hard_reason": "heat and travel"
+      },
+      "expected": {
+        "ok": true,
+        "errors": {},
+        "values": {
+          "session_type": "field",
+          "rpe": 8,
+          "duration": 95,
+          "hard_reason": "heat and travel"
+        },
+        "computed": {
+          "srpe": 760,
+          "load_band": "high",
+          "duration_h": 1.6,
+          "duration_back": 96
+        },
+        "hidden": []
+      }
+    },
+    {
+      "name": "revealed field enforces required",
+      "schema": "session",
+      "values": {
+        "session_type": "gym",
+        "rpe": 10,
+        "duration": 60
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "hard_reason": "required"
+        },
+        "values": {
+          "session_type": "gym",
+          "rpe": 10,
+          "duration": 60
+        },
+        "computed": {
+          "srpe": 600,
+          "load_band": "high",
+          "duration_h": 1,
+          "duration_back": 60
+        },
+        "hidden": []
+      }
+    },
+    {
+      "name": "revealed field enforces max_length",
+      "schema": "session",
+      "values": {
+        "session_type": "gym",
+        "rpe": 10,
+        "duration": 60,
+        "hard_reason": "the heat was brutal today"
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "hard_reason": "too_long"
+        },
+        "values": {
+          "session_type": "gym",
+          "rpe": 10,
+          "duration": 60,
+          "hard_reason": "the heat was brutal today"
+        },
+        "computed": {
+          "srpe": 600,
+          "load_band": "high",
+          "duration_h": 1,
+          "duration_back": 60
+        },
+        "hidden": []
+      }
+    },
+    {
+      "name": "rest day hides inputs; calculated uses constant branch; arithmetic on hidden (null) input is null",
+      "schema": "session",
+      "values": {
+        "session_type": "rest",
+        "rpe": 7,
+        "duration": 60
+      },
+      "expected": {
+        "ok": true,
+        "errors": {},
+        "values": {
+          "session_type": "rest"
+        },
+        "computed": {
+          "srpe": 0,
+          "load_band": "low",
+          "duration_h": null,
+          "duration_back": null
+        },
+        "hidden": [
+          "rpe",
+          "duration",
+          "hard_reason"
+        ]
+      }
+    },
+    {
+      "name": "select rejects value not in options (numeric options are not matched by strings or out-of-list numbers)",
+      "schema": "session",
+      "values": {
+        "session_type": "field",
+        "rpe": 11,
+        "duration": 45
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "rpe": "invalid_option"
+        },
+        "values": {
+          "session_type": "field",
+          "rpe": 11,
+          "duration": 45
+        },
+        "computed": {
+          "srpe": 495,
+          "load_band": "moderate",
+          "duration_h": 0.8,
+          "duration_back": 48
+        },
+        "hidden": [
+          "hard_reason"
+        ]
+      }
+    },
+    {
+      "name": "decimals round half away from zero",
+      "schema": "session",
+      "values": {
+        "session_type": "field",
+        "rpe": 7,
+        "duration": 9
+      },
+      "expected": {
+        "ok": true,
+        "errors": {},
+        "values": {
+          "session_type": "field",
+          "rpe": 7,
+          "duration": 9
+        },
+        "computed": {
+          "srpe": 63,
+          "load_band": "low",
+          "duration_h": 0.2,
+          "duration_back": 12
+        },
+        "hidden": [
+          "hard_reason"
+        ]
+      }
+    },
+    {
+      "name": "all types valid; section hidden",
+      "schema": "types",
+      "values": {
+        "mass": 81.25,
+        "rating": 7.5,
+        "test_date": "2026-10-12",
+        "start_time": "06:30",
+        "recorded_at": "2026-10-12T06:31:00-04:00",
+        "comment": "ok",
+        "tags": [
+          "a",
+          "c"
+        ],
+        "level": 2,
+        "flag": false,
+        "extra_value": 5
+      },
+      "expected": {
+        "ok": true,
+        "errors": {},
+        "values": {
+          "mass": 81.25,
+          "rating": 7.5,
+          "test_date": "2026-10-12",
+          "start_time": "06:30",
+          "recorded_at": "2026-10-12T06:31:00-04:00",
+          "comment": "ok",
+          "tags": [
+            "a",
+            "c"
+          ],
+          "level": 2,
+          "flag": false
+        },
+        "computed": {
+          "extra_double": null
+        },
+        "hidden": [
+          "extra_value",
+          "extra_double"
+        ]
+      }
+    },
+    {
+      "name": "format, range, step and type errors across types; section revealed",
+      "schema": "types",
+      "values": {
+        "note": "x",
+        "mass": 20,
+        "rating": 7.25,
+        "test_date": "2026-02-30",
+        "start_time": "24:00",
+        "recorded_at": "2026-10-12T06:31:00",
+        "comment": "toolong",
+        "tags": [
+          "a"
+        ],
+        "level": "2",
+        "flag": true
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "note": "unknown_field",
+          "mass": "out_of_range",
+          "rating": "invalid_step",
+          "test_date": "invalid_format",
+          "start_time": "invalid_format",
+          "recorded_at": "invalid_format",
+          "comment": "too_long",
+          "tags": "out_of_range",
+          "level": "invalid_option",
+          "extra_value": "required"
+        },
+        "values": {
+          "mass": 20,
+          "rating": 7.25,
+          "test_date": "2026-02-30",
+          "start_time": "24:00",
+          "recorded_at": "2026-10-12T06:31:00",
+          "comment": "toolong",
+          "tags": [
+            "a"
+          ],
+          "level": "2",
+          "flag": true
+        },
+        "computed": {
+          "extra_double": null
+        },
+        "hidden": []
+      }
+    },
+    {
+      "name": "date before min; revealed section computes",
+      "schema": "types",
+      "values": {
+        "test_date": "2023-12-31",
+        "recorded_at": "2026-10-12T10:31:00Z",
+        "flag": true,
+        "extra_value": 2.5
+      },
+      "expected": {
+        "ok": false,
+        "errors": {
+          "test_date": "out_of_range"
+        },
+        "values": {
+          "test_date": "2023-12-31",
+          "recorded_at": "2026-10-12T10:31:00Z",
+          "flag": true,
+          "extra_value": 2.5
+        },
+        "computed": {
+          "extra_double": 5
+        },
+        "hidden": []
+      }
+    }
+  ]
+}
