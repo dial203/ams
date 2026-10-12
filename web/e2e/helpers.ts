@@ -7,7 +7,12 @@ export async function login(page: Page, user = ADMIN): Promise<void> {
   await page.getByLabel("Email").fill(user.email);
   await page.getByLabel("Password").fill(user.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Readiness" })).toBeVisible();
+  // Users with several organizations pick one first (the demo org).
+  const picker = page.getByRole("heading", { name: "Choose an organization" });
+  const board = page.getByRole("heading", { name: "Readiness" });
+  await expect(picker.or(board)).toBeVisible();
+  if (await picker.isVisible()) await page.getByRole("button", { name: /Demo Performance/ }).click();
+  await expect(board).toBeVisible();
 }
 
 export function shot(name: string): string {

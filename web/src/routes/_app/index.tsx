@@ -98,11 +98,20 @@ function ReadinessPage() {
         ) : board.data.rows.length === 0 ? (
           <EmptyState
             icon={Gauge}
+            action={
+              isAdmin && !groupId ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/athletes">Add {terms.athletes.toLowerCase()}</Link>
+                </Button>
+              ) : undefined
+            }
             title={`No ${terms.athletes.toLowerCase()} here`}
             description={
               groupId
                 ? `There are no active ${terms.athletes.toLowerCase()} in this ${terms.group.toLowerCase()} that you can see.`
-                : `You can see no active ${terms.athletes.toLowerCase()} yet. Staff see the ${terms.groups.toLowerCase()} an admin assigns them to.`
+                : isAdmin
+                  ? `There are no active ${terms.athletes.toLowerCase()} yet. Add them one by one or import a CSV from Data → Import.`
+                  : `You can see no active ${terms.athletes.toLowerCase()} yet. Staff see the ${terms.groups.toLowerCase()} an admin assigns them to.`
             }
           />
         ) : (
