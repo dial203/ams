@@ -116,6 +116,7 @@ describe("TodayScreen", () => {
     await screen.findByText("Session RPE");
     fail = true;
     await act(() => app.queryClient.refetchQueries());
+    expect(await screen.findByText("Couldn't refresh. Showing saved data.")).toBeOnTheScreen();
     expect(screen.getByText("Session RPE")).toBeOnTheScreen();
   });
 });

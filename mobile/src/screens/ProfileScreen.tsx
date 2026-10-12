@@ -84,9 +84,10 @@ function PasswordForm() {
     mutation.mutate();
   };
 
+  // The API answers 403 for a wrong current password (never 401, which would end the session).
   const serverError = mutation.isError
-    ? isApiError(mutation.error) && (mutation.error.status === 400 || mutation.error.status === 403)
-      ? mutation.error.detail || "Your current password is incorrect."
+    ? isApiError(mutation.error) && mutation.error.status === 403
+      ? "Your current password is incorrect."
       : describeError(mutation.error)
     : null;
 

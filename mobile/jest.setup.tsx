@@ -62,4 +62,7 @@ jest.mock("@react-native-community/slider", () => {
 
 // Expo Router is exercised through real navigation only in the app; screen tests use these.
 jest.mock("expo-router", () => require("./src/test/expoRouterMock"));
-jest.mock("expo-router/react-navigation", () => ({ usePreventRemove: jest.fn() }));
+jest.mock("expo-router/react-navigation", () => ({ usePreventRemove: jest.fn(), useHeaderHeight: () => 0 }));
+
+// Generous async timeout so findBy* queries stay reliable on a loaded CI machine.
+require("@testing-library/react-native").configure({ asyncUtilTimeout: 5000 });

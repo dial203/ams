@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import { useNavigation, useRouter } from "expo-router";
-import { usePreventRemove } from "expo-router/react-navigation";
+import { useHeaderHeight, usePreventRemove } from "expo-router/react-navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   calculatedFields,
@@ -83,6 +83,7 @@ function QuestionnaireForm({ due, today }: { due: DueForm; today: string }) {
   const api = useApi();
   const queryClient = useQueryClient();
   const navigation = useNavigation();
+  const headerHeight = useHeaderHeight();
   const { orgId } = useActiveMembership();
   const wizard = useFormWizard(due.version.schema);
   const [problem, setProblem] = useState<SubmitProblem | null>(null);
@@ -158,6 +159,7 @@ function QuestionnaireForm({ due, today }: { due: DueForm; today: string }) {
       wizard={wizard}
       intro={due.form.description}
       submitting={mutation.isPending}
+      keyboardOffset={headerHeight}
       onSubmit={(v) => void submit(v)}
       banner={
         problem ? (

@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatMetricValue, queryKeys, type DueForm } from "@ams/shared";
 import { Sparkline } from "../components/charts";
 import { HealthSyncChip } from "../components/HealthSyncChip";
-import { AppText, Card, EmptyState, ErrorState, FlagBadge, LoadingState, Screen } from "../components/ui";
+import { AppText, Banner, Card, EmptyState, ErrorState, FlagBadge, LoadingState, Screen } from "../components/ui";
 import { HEALTH_STATUS_KEY } from "../lib/health/HealthContext";
 import { formatLongDate, formatTimeInZone, greetingFor, minutesInZone, parseClock } from "../lib/format";
 import { useAthleteDay, useSelfAthlete, useSelfMetrics, useTodayForms } from "../lib/queries";
@@ -187,6 +187,7 @@ export function TodayScreen() {
         <EmptyState title="Nothing to fill in today" message="Check back later or pull down to refresh." />
       ) : (
         <View style={styles.list} accessibilityRole="list">
+          {forms.isError ? <Banner tone="warning" message="Couldn't refresh. Showing saved data." /> : null}
           {sorted.map((item) => (
             <DueFormRow key={item.form.id} item={item} state={dueFormState(item, nowMinutes)} timeZone={timeZone} />
           ))}
