@@ -125,7 +125,7 @@ export function parseDurationInput(text: string): number | string | undefined {
   if (t === "") return undefined;
   let m = /^(\d+):(\d{1,2})$/.exec(t);
   if (m) return Number(m[1]) * 60 + Number(m[2]);
-  m = /^(\d+(?:\.\d+)?)\s*h(?:\s*(\d+(?:\.\d+)?)\s*m(?:in)?)?$/.exec(t);
+  m = /^(\d+(?:\.\d+)?)\s*h(?:\s*(\d+(?:\.\d+)?)\s*(?:m(?:in)?)?)?$/.exec(t);
   if (m) return roundHalfAwayFromZero(Number(m[1]) * 60 + (m[2] ? Number(m[2]) : 0), 4);
   m = /^(\d+(?:\.\d+)?)\s*m(?:in)?$/.exec(t);
   if (m) return Number(m[1]);
