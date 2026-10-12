@@ -1,152 +1,802 @@
 {
   "description": "Expression language conformance cases. See docs/FORMS.md. Each case has `expr`, optional `vars`, and exactly one of: `result` (expected value; numbers compare with relative tolerance 1e-9), `error: true` (evaluation error, e.g. type error or unknown identifier), `parse_error: true` (fails to parse, including unknown function or wrong arity).",
   "cases": [
-    {"expr": "1 + 2", "result": 3},
-    {"expr": "1 + 2 * 3", "result": 7},
-    {"expr": "(1 + 2) * 3", "result": 9},
-    {"expr": "10 - 4 - 3", "result": 3},
-    {"expr": "8 / 2 / 2", "result": 2},
-    {"expr": "5 / 2", "result": 2.5},
-    {"expr": "7 % 3", "result": 1},
-    {"expr": "-7 % 3", "result": -1},
-    {"expr": "7 % -3", "result": 1},
-    {"expr": "2 ^ 10", "result": 1024},
-    {"expr": "2 ^ 3 ^ 2", "result": 512},
-    {"expr": "-2 ^ 2", "result": -4},
-    {"expr": "2 ^ -1", "result": 0.5},
-    {"expr": "--3", "result": 3},
-    {"expr": ".5 + 1.5", "result": 2},
-    {"expr": "1e3", "result": 1000},
-    {"expr": "2.5E-1", "result": 0.25},
-    {"expr": "0.1 + 0.2", "result": 0.30000000000000004},
-    {"expr": "1 / 0", "result": null},
-    {"expr": "1 % 0", "result": null},
-    {"expr": "(-8) ^ (1 / 3)", "result": null},
-    {"expr": "10 ^ 400", "result": null},
-    {"expr": "x + 1", "vars": {"x": null}, "result": null},
-    {"expr": "x * 2", "vars": {"x": 4}, "result": 8},
-    {"expr": "rpe * duration", "vars": {"rpe": 7, "duration": 90}, "result": 630},
-    {"expr": "'ab' + \"cd\"", "result": "abcd"},
-    {"expr": "'it\\'s'", "result": "it's"},
-    {"expr": "\"a\\\\b\"", "result": "a\\b"},
-    {"expr": "'a' + 1", "error": true},
-    {"expr": "true + 1", "error": true},
-    {"expr": "-'a'", "error": true},
-    {"expr": "unknown_var + 1", "error": true},
-
-    {"expr": "1 == 1.0", "result": true},
-    {"expr": "1 == '1'", "result": false},
-    {"expr": "true == 1", "result": false},
-    {"expr": "null == null", "result": true},
-    {"expr": "x == null", "vars": {"x": null}, "result": true},
-    {"expr": "x != null", "vars": {"x": 0}, "result": true},
-    {"expr": "'a' != 'b'", "result": true},
-    {"expr": "tags == tags", "vars": {"tags": ["a", "b"]}, "result": true},
-    {"expr": "3 > 2", "result": true},
-    {"expr": "3 >= 3", "result": true},
-    {"expr": "2 < 1", "result": false},
-    {"expr": "2 <= 1", "result": false},
-    {"expr": "'abc' < 'abd'", "result": true},
-    {"expr": "'B' < 'a'", "result": true},
-    {"expr": "x > 3", "vars": {"x": null}, "result": false},
-    {"expr": "x < 3", "vars": {"x": null}, "result": false},
-    {"expr": "1 < 'a'", "error": true},
-    {"expr": "true < false", "error": true},
-    {"expr": "1 < 2 < 3", "parse_error": true},
-
-    {"expr": "true and false", "result": false},
-    {"expr": "true && true", "result": true},
-    {"expr": "false or true", "result": true},
-    {"expr": "false || false", "result": false},
-    {"expr": "not true", "result": false},
-    {"expr": "!false", "result": true},
-    {"expr": "not null", "result": true},
-    {"expr": "not 1", "result": true},
-    {"expr": "1 and true", "result": false},
-    {"expr": "null or true", "result": true},
-    {"expr": "false and unknown_var", "result": false},
-    {"expr": "true or unknown_var", "result": true},
-    {"expr": "true and unknown_var", "error": true},
-    {"expr": "not a == b", "vars": {"a": 1, "b": 2}, "result": true},
-    {"expr": "a > 1 and b > 1 or c", "vars": {"a": 2, "b": 0, "c": true}, "result": true},
-    {"expr": "a > 1 and (b > 1 or c)", "vars": {"a": 0, "b": 5, "c": true}, "result": false},
-
-    {"expr": "sum(1, 2, 3)", "result": 6},
-    {"expr": "sum(a, b, c)", "vars": {"a": 1, "b": null, "c": 3}, "result": 4},
-    {"expr": "sum(a, b)", "vars": {"a": null, "b": null}, "result": null},
-    {"expr": "sum(xs)", "vars": {"xs": [1, 2, 3]}, "result": 6},
-    {"expr": "sum(xs, 4)", "vars": {"xs": [1, 2]}, "result": 7},
-    {"expr": "sum(1, 'a')", "error": true},
-    {"expr": "sum(true)", "error": true},
-    {"expr": "sum()", "parse_error": true},
-    {"expr": "avg(2, 4, 9)", "result": 5},
-    {"expr": "mean(a, b)", "vars": {"a": 3, "b": null}, "result": 3},
-    {"expr": "avg(a)", "vars": {"a": null}, "result": null},
-    {"expr": "min(3, 1, 2)", "result": 1},
-    {"expr": "max(3, x, 2)", "vars": {"x": 10}, "result": 10},
-    {"expr": "max(x)", "vars": {"x": null}, "result": null},
-    {"expr": "count(a, b, c)", "vars": {"a": 1, "b": null, "c": "x"}, "result": 2},
-    {"expr": "count(tags)", "vars": {"tags": ["a", "b", "c"]}, "result": 3},
-    {"expr": "count(tags)", "vars": {"tags": null}, "result": 0},
-    {"expr": "round(2.5)", "result": 3},
-    {"expr": "round(-2.5)", "result": -3},
-    {"expr": "round(2.4)", "result": 2},
-    {"expr": "round(3.14159, 2)", "result": 3.14},
-    {"expr": "round(2.675, 2)", "result": 2.68},
-    {"expr": "round(x, 1)", "vars": {"x": null}, "result": null},
-    {"expr": "round(1.5, 1.5)", "error": true},
-    {"expr": "round(1, 2, 3)", "parse_error": true},
-    {"expr": "floor(-1.5)", "result": -2},
-    {"expr": "ceil(1.2)", "result": 2},
-    {"expr": "abs(-4)", "result": 4},
-    {"expr": "sqrt(16)", "result": 4},
-    {"expr": "sqrt(-1)", "result": null},
-    {"expr": "ln(1)", "result": 0},
-    {"expr": "ln(0)", "result": null},
-    {"expr": "round(ln(42), 4)", "result": 3.7377},
-    {"expr": "log10(1000)", "result": 3},
-    {"expr": "exp(0)", "result": 1},
-    {"expr": "pow(2, 3)", "result": 8},
-    {"expr": "pow(2)", "parse_error": true},
-    {"expr": "clamp(15, 0, 10)", "result": 10},
-    {"expr": "clamp(-1, 0, 10)", "result": 0},
-    {"expr": "clamp(x, 0, 10)", "vars": {"x": null}, "result": null},
-    {"expr": "if(x > 5, 'high', 'low')", "vars": {"x": 7}, "result": "high"},
-    {"expr": "if(x > 5, 'high', 'low')", "vars": {"x": null}, "result": "low"},
-    {"expr": "if(true, 1, unknown_var)", "result": 1},
-    {"expr": "if(1, 'a', 'b')", "result": "b"},
-    {"expr": "if(true, 1)", "parse_error": true},
-    {"expr": "coalesce(a, b, 3)", "vars": {"a": null, "b": null}, "result": 3},
-    {"expr": "coalesce(a, unknown_var)", "vars": {"a": 0}, "result": 0},
-    {"expr": "coalesce(a)", "vars": {"a": null}, "result": null},
-    {"expr": "isnull(a)", "vars": {"a": null}, "result": true},
-    {"expr": "isnull(0)", "result": false},
-    {"expr": "contains(tags, 'knee')", "vars": {"tags": ["ankle", "knee"]}, "result": true},
-    {"expr": "contains(tags, 'hip')", "vars": {"tags": ["ankle", "knee"]}, "result": false},
-    {"expr": "contains(tags, 'hip')", "vars": {"tags": null}, "result": false},
-    {"expr": "contains(ids, 2)", "vars": {"ids": [1, 2.0]}, "result": true},
-    {"expr": "contains('knee', 'k')", "error": true},
-    {"expr": "len('hello')", "result": 5},
-    {"expr": "len(tags)", "vars": {"tags": ["a", "b"]}, "result": 2},
-    {"expr": "len(x)", "vars": {"x": null}, "result": 0},
-    {"expr": "len(5)", "error": true},
-
-    {"expr": "unknown_fn(1)", "parse_error": true},
-    {"expr": "1 +", "parse_error": true},
-    {"expr": "(1 + 2", "parse_error": true},
-    {"expr": "1 2", "parse_error": true},
-    {"expr": "5.", "parse_error": true},
-    {"expr": "'unterminated", "parse_error": true},
-    {"expr": "a.b", "parse_error": true},
-    {"expr": "a = 1", "parse_error": true},
-    {"expr": "Abc", "parse_error": true},
-    {"expr": "", "parse_error": true},
-    {"expr": "   42   ", "result": 42},
-    {"expr": "sum ( 1 , 2 )", "result": 3},
-
-    {"expr": "sum(sleep, fatigue, stress, soreness)", "vars": {"sleep": 3, "fatigue": 4, "stress": 2, "soreness": 5}, "result": 14},
-    {"expr": "round(ln(rmssd), 3)", "vars": {"rmssd": 65}, "result": 4.174},
-    {"expr": "if(has_pain, pain_score, 0)", "vars": {"has_pain": false, "pain_score": null}, "result": 0},
-    {"expr": "round(jump_height_cm / body_mass_kg * 100, 1)", "vars": {"jump_height_cm": 38.4, "body_mass_kg": 81.2}, "result": 47.3}
+    {
+      "expr": "1 + 2",
+      "result": 3
+    },
+    {
+      "expr": "1 + 2 * 3",
+      "result": 7
+    },
+    {
+      "expr": "(1 + 2) * 3",
+      "result": 9
+    },
+    {
+      "expr": "10 - 4 - 3",
+      "result": 3
+    },
+    {
+      "expr": "8 / 2 / 2",
+      "result": 2
+    },
+    {
+      "expr": "5 / 2",
+      "result": 2.5
+    },
+    {
+      "expr": "7 % 3",
+      "result": 1
+    },
+    {
+      "expr": "-7 % 3",
+      "result": -1
+    },
+    {
+      "expr": "7 % -3",
+      "result": 1
+    },
+    {
+      "expr": "2 ^ 10",
+      "result": 1024
+    },
+    {
+      "expr": "2 ^ 3 ^ 2",
+      "result": 512
+    },
+    {
+      "expr": "-2 ^ 2",
+      "result": -4
+    },
+    {
+      "expr": "2 ^ -1",
+      "result": 0.5
+    },
+    {
+      "expr": "--3",
+      "result": 3
+    },
+    {
+      "expr": ".5 + 1.5",
+      "result": 2
+    },
+    {
+      "expr": "1e3",
+      "result": 1000
+    },
+    {
+      "expr": "2.5E-1",
+      "result": 0.25
+    },
+    {
+      "expr": "0.1 + 0.2",
+      "result": 0.30000000000000004
+    },
+    {
+      "expr": "1 / 0",
+      "result": null
+    },
+    {
+      "expr": "1 % 0",
+      "result": null
+    },
+    {
+      "expr": "(-8) ^ (1 / 3)",
+      "result": null
+    },
+    {
+      "expr": "10 ^ 400",
+      "result": null
+    },
+    {
+      "expr": "x + 1",
+      "vars": {
+        "x": null
+      },
+      "result": null
+    },
+    {
+      "expr": "x * 2",
+      "vars": {
+        "x": 4
+      },
+      "result": 8
+    },
+    {
+      "expr": "rpe * duration",
+      "vars": {
+        "rpe": 7,
+        "duration": 90
+      },
+      "result": 630
+    },
+    {
+      "expr": "'ab' + \"cd\"",
+      "result": "abcd"
+    },
+    {
+      "expr": "'it\\'s'",
+      "result": "it's"
+    },
+    {
+      "expr": "\"a\\\\b\"",
+      "result": "a\\b"
+    },
+    {
+      "expr": "'a' + 1",
+      "error": true
+    },
+    {
+      "expr": "true + 1",
+      "error": true
+    },
+    {
+      "expr": "-'a'",
+      "error": true
+    },
+    {
+      "expr": "unknown_var + 1",
+      "error": true
+    },
+    {
+      "expr": "1 == 1.0",
+      "result": true
+    },
+    {
+      "expr": "1 == '1'",
+      "result": false
+    },
+    {
+      "expr": "true == 1",
+      "result": false
+    },
+    {
+      "expr": "null == null",
+      "result": true
+    },
+    {
+      "expr": "x == null",
+      "vars": {
+        "x": null
+      },
+      "result": true
+    },
+    {
+      "expr": "x != null",
+      "vars": {
+        "x": 0
+      },
+      "result": true
+    },
+    {
+      "expr": "'a' != 'b'",
+      "result": true
+    },
+    {
+      "expr": "tags == tags",
+      "vars": {
+        "tags": [
+          "a",
+          "b"
+        ]
+      },
+      "result": true
+    },
+    {
+      "expr": "3 > 2",
+      "result": true
+    },
+    {
+      "expr": "3 >= 3",
+      "result": true
+    },
+    {
+      "expr": "2 < 1",
+      "result": false
+    },
+    {
+      "expr": "2 <= 1",
+      "result": false
+    },
+    {
+      "expr": "'abc' < 'abd'",
+      "result": true
+    },
+    {
+      "expr": "'B' < 'a'",
+      "result": true
+    },
+    {
+      "expr": "x > 3",
+      "vars": {
+        "x": null
+      },
+      "result": false
+    },
+    {
+      "expr": "x < 3",
+      "vars": {
+        "x": null
+      },
+      "result": false
+    },
+    {
+      "expr": "1 < 'a'",
+      "error": true
+    },
+    {
+      "expr": "true < false",
+      "error": true
+    },
+    {
+      "expr": "1 < 2 < 3",
+      "parse_error": true
+    },
+    {
+      "expr": "true and false",
+      "result": false
+    },
+    {
+      "expr": "true && true",
+      "result": true
+    },
+    {
+      "expr": "false or true",
+      "result": true
+    },
+    {
+      "expr": "false || false",
+      "result": false
+    },
+    {
+      "expr": "not true",
+      "result": false
+    },
+    {
+      "expr": "!false",
+      "result": true
+    },
+    {
+      "expr": "not null",
+      "result": true
+    },
+    {
+      "expr": "not 1",
+      "result": true
+    },
+    {
+      "expr": "1 and true",
+      "result": false
+    },
+    {
+      "expr": "null or true",
+      "result": true
+    },
+    {
+      "expr": "false and unknown_var",
+      "result": false
+    },
+    {
+      "expr": "true or unknown_var",
+      "result": true
+    },
+    {
+      "expr": "true and unknown_var",
+      "error": true
+    },
+    {
+      "expr": "not a == b",
+      "vars": {
+        "a": 1,
+        "b": 2
+      },
+      "result": true
+    },
+    {
+      "expr": "a > 1 and b > 1 or c",
+      "vars": {
+        "a": 2,
+        "b": 0,
+        "c": true
+      },
+      "result": true
+    },
+    {
+      "expr": "a > 1 and (b > 1 or c)",
+      "vars": {
+        "a": 0,
+        "b": 5,
+        "c": true
+      },
+      "result": false
+    },
+    {
+      "expr": "sum(1, 2, 3)",
+      "result": 6
+    },
+    {
+      "expr": "sum(a, b, c)",
+      "vars": {
+        "a": 1,
+        "b": null,
+        "c": 3
+      },
+      "result": 4
+    },
+    {
+      "expr": "sum(a, b)",
+      "vars": {
+        "a": null,
+        "b": null
+      },
+      "result": null
+    },
+    {
+      "expr": "sum(xs)",
+      "vars": {
+        "xs": [
+          1,
+          2,
+          3
+        ]
+      },
+      "result": 6
+    },
+    {
+      "expr": "sum(xs, 4)",
+      "vars": {
+        "xs": [
+          1,
+          2
+        ]
+      },
+      "result": 7
+    },
+    {
+      "expr": "sum(1, 'a')",
+      "error": true
+    },
+    {
+      "expr": "sum(true)",
+      "error": true
+    },
+    {
+      "expr": "sum()",
+      "parse_error": true
+    },
+    {
+      "expr": "avg(2, 4, 9)",
+      "result": 5
+    },
+    {
+      "expr": "mean(a, b)",
+      "vars": {
+        "a": 3,
+        "b": null
+      },
+      "result": 3
+    },
+    {
+      "expr": "avg(a)",
+      "vars": {
+        "a": null
+      },
+      "result": null
+    },
+    {
+      "expr": "min(3, 1, 2)",
+      "result": 1
+    },
+    {
+      "expr": "max(3, x, 2)",
+      "vars": {
+        "x": 10
+      },
+      "result": 10
+    },
+    {
+      "expr": "max(x)",
+      "vars": {
+        "x": null
+      },
+      "result": null
+    },
+    {
+      "expr": "count(a, b, c)",
+      "vars": {
+        "a": 1,
+        "b": null,
+        "c": "x"
+      },
+      "result": 2
+    },
+    {
+      "expr": "count(tags)",
+      "vars": {
+        "tags": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      "result": 3
+    },
+    {
+      "expr": "count(tags)",
+      "vars": {
+        "tags": null
+      },
+      "result": 0
+    },
+    {
+      "expr": "round(2.5)",
+      "result": 3
+    },
+    {
+      "expr": "round(-2.5)",
+      "result": -3
+    },
+    {
+      "expr": "round(2.4)",
+      "result": 2
+    },
+    {
+      "expr": "round(3.14159, 2)",
+      "result": 3.14
+    },
+    {
+      "expr": "round(2.675, 2)",
+      "result": 2.68
+    },
+    {
+      "expr": "round(x, 1)",
+      "vars": {
+        "x": null
+      },
+      "result": null
+    },
+    {
+      "expr": "round(1.5, 1.5)",
+      "error": true
+    },
+    {
+      "expr": "round(1, 2, 3)",
+      "parse_error": true
+    },
+    {
+      "expr": "floor(-1.5)",
+      "result": -2
+    },
+    {
+      "expr": "ceil(1.2)",
+      "result": 2
+    },
+    {
+      "expr": "abs(-4)",
+      "result": 4
+    },
+    {
+      "expr": "sqrt(16)",
+      "result": 4
+    },
+    {
+      "expr": "sqrt(-1)",
+      "result": null
+    },
+    {
+      "expr": "ln(1)",
+      "result": 0
+    },
+    {
+      "expr": "ln(0)",
+      "result": null
+    },
+    {
+      "expr": "round(ln(42), 4)",
+      "result": 3.7377
+    },
+    {
+      "expr": "log10(1000)",
+      "result": 3
+    },
+    {
+      "expr": "exp(0)",
+      "result": 1
+    },
+    {
+      "expr": "pow(2, 3)",
+      "result": 8
+    },
+    {
+      "expr": "pow(2)",
+      "parse_error": true
+    },
+    {
+      "expr": "clamp(15, 0, 10)",
+      "result": 10
+    },
+    {
+      "expr": "clamp(-1, 0, 10)",
+      "result": 0
+    },
+    {
+      "expr": "clamp(x, 0, 10)",
+      "vars": {
+        "x": null
+      },
+      "result": null
+    },
+    {
+      "expr": "if(x > 5, 'high', 'low')",
+      "vars": {
+        "x": 7
+      },
+      "result": "high"
+    },
+    {
+      "expr": "if(x > 5, 'high', 'low')",
+      "vars": {
+        "x": null
+      },
+      "result": "low"
+    },
+    {
+      "expr": "if(true, 1, unknown_var)",
+      "result": 1
+    },
+    {
+      "expr": "if(1, 'a', 'b')",
+      "result": "b"
+    },
+    {
+      "expr": "if(true, 1)",
+      "parse_error": true
+    },
+    {
+      "expr": "coalesce(a, b, 3)",
+      "vars": {
+        "a": null,
+        "b": null
+      },
+      "result": 3
+    },
+    {
+      "expr": "coalesce(a, unknown_var)",
+      "vars": {
+        "a": 0
+      },
+      "result": 0
+    },
+    {
+      "expr": "coalesce(a)",
+      "vars": {
+        "a": null
+      },
+      "result": null
+    },
+    {
+      "expr": "isnull(a)",
+      "vars": {
+        "a": null
+      },
+      "result": true
+    },
+    {
+      "expr": "isnull(0)",
+      "result": false
+    },
+    {
+      "expr": "contains(tags, 'knee')",
+      "vars": {
+        "tags": [
+          "ankle",
+          "knee"
+        ]
+      },
+      "result": true
+    },
+    {
+      "expr": "contains(tags, 'hip')",
+      "vars": {
+        "tags": [
+          "ankle",
+          "knee"
+        ]
+      },
+      "result": false
+    },
+    {
+      "expr": "contains(tags, 'hip')",
+      "vars": {
+        "tags": null
+      },
+      "result": false
+    },
+    {
+      "expr": "contains(ids, 2)",
+      "vars": {
+        "ids": [
+          1,
+          2.0
+        ]
+      },
+      "result": true
+    },
+    {
+      "expr": "contains('knee', 'k')",
+      "error": true
+    },
+    {
+      "expr": "len('hello')",
+      "result": 5
+    },
+    {
+      "expr": "len(tags)",
+      "vars": {
+        "tags": [
+          "a",
+          "b"
+        ]
+      },
+      "result": 2
+    },
+    {
+      "expr": "len(x)",
+      "vars": {
+        "x": null
+      },
+      "result": 0
+    },
+    {
+      "expr": "len(5)",
+      "error": true
+    },
+    {
+      "expr": "unknown_fn(1)",
+      "parse_error": true
+    },
+    {
+      "expr": "1 +",
+      "parse_error": true
+    },
+    {
+      "expr": "(1 + 2",
+      "parse_error": true
+    },
+    {
+      "expr": "1 2",
+      "parse_error": true
+    },
+    {
+      "expr": "5.",
+      "parse_error": true
+    },
+    {
+      "expr": "'unterminated",
+      "parse_error": true
+    },
+    {
+      "expr": "a.b",
+      "parse_error": true
+    },
+    {
+      "expr": "a = 1",
+      "parse_error": true
+    },
+    {
+      "expr": "Abc",
+      "parse_error": true
+    },
+    {
+      "expr": "",
+      "parse_error": true
+    },
+    {
+      "expr": "   42   ",
+      "result": 42
+    },
+    {
+      "expr": "sum ( 1 , 2 )",
+      "result": 3
+    },
+    {
+      "expr": "sum(sleep, fatigue, stress, soreness)",
+      "vars": {
+        "sleep": 3,
+        "fatigue": 4,
+        "stress": 2,
+        "soreness": 5
+      },
+      "result": 14
+    },
+    {
+      "expr": "round(ln(rmssd), 3)",
+      "vars": {
+        "rmssd": 65
+      },
+      "result": 4.174
+    },
+    {
+      "expr": "if(has_pain, pain_score, 0)",
+      "vars": {
+        "has_pain": false,
+        "pain_score": null
+      },
+      "result": 0
+    },
+    {
+      "expr": "round(jump_height_cm / body_mass_kg * 100, 1)",
+      "vars": {
+        "jump_height_cm": 38.4,
+        "body_mass_kg": 81.2
+      },
+      "result": 47.3
+    },
+    {
+      "expr": "x + 'a'",
+      "vars": {
+        "x": null
+      },
+      "result": null
+    },
+    {
+      "expr": "round(x, 1.5)",
+      "vars": {
+        "x": null
+      },
+      "result": null
+    },
+    {
+      "expr": "round(1, d)",
+      "vars": {
+        "d": null
+      },
+      "error": true
+    },
+    {
+      "expr": "clamp(15, lo, 10)",
+      "vars": {
+        "lo": null
+      },
+      "result": 10
+    },
+    {
+      "expr": "clamp(-5, 0, hi)",
+      "vars": {
+        "hi": null
+      },
+      "result": 0
+    },
+    {
+      "expr": "clamp(xs, 0, 10)",
+      "vars": {
+        "xs": [
+          1,
+          2
+        ]
+      },
+      "error": true
+    },
+    {
+      "expr": "-0 * 1",
+      "result": 0
+    },
+    {
+      "expr": "sum",
+      "error": true
+    },
+    {
+      "expr": "'a\\qb'",
+      "parse_error": true
+    },
+    {
+      "expr": "len('héllo')",
+      "result": 5
+    },
+    {
+      "expr": "'a' < 'é'",
+      "result": true
+    }
   ]
 }

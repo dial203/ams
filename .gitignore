@@ -20,3 +20,5 @@ __pycache__/
 mobile/ios/
 mobile/android/
 *.tsbuildinfo
+# api
+api/uploads/

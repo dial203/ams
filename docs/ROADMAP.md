@@ -6,21 +6,34 @@ department or lab hits first in day-to-day use.
 ## Phase 1: foundation (this slice)
 
 - [x] Architecture, API contract, form/expression spec, cross-language conformance vectors
-- [ ] API: auth (email/password, JWT + rotating refresh), orgs, members, invitations
-- [ ] API: groups (hierarchical), athletes (coded IDs, PII masking), staff assignments, permission model
-- [ ] API: form builder backend: drafts, immutable versions, schema validation, templates (Hooper wellness, sRPE, injury, CMJ, GPS session, body mass)
-- [ ] API: submissions (single, bulk team entry), server-side calculation, soft delete, audit log, CSV export (de-identified option)
-- [ ] API: CSV/XLSX import with column mapping and athlete matching
-- [ ] API: Open Wearables link, provider connect URLs, SDK token minting, webhook receiver, `wearable_daily` cache
-- [ ] API: metrics engine (rolling, EWMA, uncoupled ACWR, z-score vs same-source baseline, monotony, strain), readiness board
-- [ ] `@ams/shared`: types, API client, expression language + form engine (passes `spec/`)
-- [ ] Web: readiness board, athletes, groups, form builder with live preview, data entry (single + team grid), data explorer + export + import wizard, metrics, settings
-- [ ] Mobile: login/invite, today's questionnaires, form renderer, history/trends, wearable connect (cloud OAuth + HealthKit/Health Connect via OW SDK), push token registration
-- [ ] docker-compose for local dev, CI (lint, typecheck, tests, spec conformance)
+- [x] API: auth (email/password, JWT + rotating refresh), orgs, members, invitations
+- [x] API: groups (hierarchical), athletes (coded IDs, PII masking), staff assignments, permission model
+- [x] API: form builder backend: drafts, immutable versions, schema validation, templates (Hooper wellness, sRPE, injury, CMJ, GPS session, body mass)
+- [x] API: submissions (single, bulk team entry), server-side calculation, soft delete, audit log, CSV export (de-identified option)
+- [x] API: CSV/XLSX import with column mapping and athlete matching
+- [x] API: Open Wearables link, provider connect URLs, SDK token minting, webhook receiver, `wearable_daily` cache
+- [x] API: metrics engine (rolling, EWMA, uncoupled ACWR, z-score vs same-source baseline, monotony, strain), readiness board
+- [x] `@ams/shared`: types, API client, expression language + form engine (passes `spec/`)
+- [x] Web: readiness board, athletes, groups, form builder with live preview, data entry (single + team grid), data explorer + export + import wizard, metrics, settings
+- [x] Mobile: login/invite, today's questionnaires, form renderer, history/trends, wearable connect (cloud OAuth + HealthKit/Health Connect via OW SDK), push token registration
+- [x] docker-compose for local dev, CI (lint, typecheck, tests, spec conformance)
+
+Known gaps in the slice:
+
+- Invitation emails are not sent; the invite link is logged and shown in the web app to copy.
+- Apple Health / Health Connect sync is wired through an adapter but has not run on a device:
+  the Open Wearables React Native SDK is not on npm yet (see `mobile/README.md`).
+- Docker images are defined but were not built in the environment this was written in.
+- Web keeps the refresh token in `localStorage`; move it to an httpOnly cookie before
+  production use with medical data.
+- No athlete-facing endpoint to disconnect a cloud wearable; `ImportBatch` has no status, so
+  rolled-back imports disappear from the list.
+- Metric series are computed per request (fast at squad scale); add caching before
+  department-wide dashboards.
 
 ## Phase 2: daily operations
 
-- Push reminders for due questionnaires (Expo push) and staff alerts on red flags
+- Staff alerts on red flags; verify due-questionnaire push reminders (implemented in the worker) on real devices
 - Offline questionnaire completion on mobile with queued sync
 - Calendar: sessions, games/missions, testing days; link sRPE submissions to calendar events
 - Staff mobile mode: team RPE grid on a tablet at the end of a session
