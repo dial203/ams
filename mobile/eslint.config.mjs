@@ -7,7 +7,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["node_modules/**", ".expo/**", "dist/**", "android/**", "ios/**", "coverage/**", "expo-env.d.ts"] },
+  { ignores: ["node_modules/**", ".expo/**", "dist/**", "android/**", "ios/**", "vendor/**", "coverage/**", "expo-env.d.ts"] },
   js.configs.recommended,
   tseslint.configs.strict,
   tseslint.configs.stylistic,

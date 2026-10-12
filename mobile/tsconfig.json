@@ -10,10 +10,27 @@
     "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "bundler",
-    "lib": ["DOM", "ESNext"],
-    "types": ["node", "jest"],
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
+    "types": [
+      "node",
+      "jest"
+    ],
     "allowJs": false
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
-  "exclude": ["node_modules", "dist", "android", "ios"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "android",
+    "ios",
+    "vendor"
+  ]
 }

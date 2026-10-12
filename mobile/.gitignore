@@ -9,3 +9,5 @@ expo-env.d.ts
 # Local env
 .env
 .env.local
+# Locally built native SDKs (README: Installing the real SDK)
+/vendor
