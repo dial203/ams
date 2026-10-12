@@ -4,9 +4,13 @@
 #
 #   cp api/.env.example api/.env      # set OW_API_KEY etc.
 #   docker compose up -d
-#   docker compose exec api uv run python -m app.cli seed-demo
+#   docker compose exec api python -m app.cli seed-demo
 #
 # Web: http://localhost:3001   API: http://localhost:8001/api/v1/docs
+#
+# Wearable webhooks: in OW, register an outgoing webhook endpoint at
+#   http://<host reachable from OW>:8001/api/v1/integrations/open-wearables/webhook
+# and put its signing secret (whsec_...) in api/.env as OW_WEBHOOK_SECRET.
 
 services:
   db:
@@ -36,7 +40,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       OW_BASE_URL: ${OW_BASE_URL:-http://host.docker.internal:8000}
       WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3001}
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3001","http://localhost:5173"]}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001,http://localhost:5173}
+      # OW as phones and browsers reach it (SDK tokens, provider icons)
+      OW_PUBLIC_BASE_URL: ${OW_PUBLIC_BASE_URL:-http://localhost:8000}
       AMS_UPLOAD_DIR: /data/uploads
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -52,7 +58,7 @@ services:
 
   worker:
     build: ./api
-    command: ["uv", "run", "celery", "-A", "app.worker", "worker", "--loglevel=info"]
+    command: ["celery", "-A", "app.worker", "worker", "--loglevel=INFO"]
     env_file: ./api/.env
     environment: *api_env
     extra_hosts:
@@ -65,7 +71,7 @@ services:
 
   beat:
     build: ./api
-    command: ["uv", "run", "celery", "-A", "app.worker", "beat", "--loglevel=info"]
+    command: ["celery", "-A", "app.worker", "beat", "--loglevel=INFO", "--schedule", "/tmp/celerybeat-schedule"]
     env_file: ./api/.env
     environment: *api_env
     depends_on:
