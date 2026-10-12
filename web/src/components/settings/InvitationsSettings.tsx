@@ -88,7 +88,7 @@ export function InvitationsSettings() {
                 <AthletePicker value={athleteId} onChange={(id) => setAthleteId(id)} scoped={false} aria-label={`Link to ${terms.athlete.toLowerCase()}`} />
               </FormRow>
             ) : (
-              <p className="pb-2 text-xs text-muted-foreground">Staff get access per group after joining (Groups → Staff access).</p>
+              <p className="pb-2 text-xs text-muted-foreground">Staff get access per {terms.group.toLowerCase()} after joining ({terms.groups} → Staff access).</p>
             )}
             <Button type="submit" disabled={!valid || create.isPending}>
               {create.isPending ? <Spinner className="text-current" /> : <MailPlus />}

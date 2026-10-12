@@ -106,7 +106,7 @@ export function FormSchedulesTab({ form }: { form: Form }) {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title="Delete this schedule?"
-        description="The form stops being due for this group. Existing submissions are kept."
+        description={`The form stops being due for this ${terms.group.toLowerCase()}. Existing submissions are kept.`}
         confirmLabel="Delete"
         destructive
         onConfirm={async () => {

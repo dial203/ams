@@ -122,7 +122,7 @@ function MetricEditor({ metric }: { metric: MetricDefinition | null }) {
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { orgId, isAdmin } = useOrg();
+  const { orgId, isAdmin, terms } = useOrg();
   const sources = useSeriesSources();
   const [v, setV] = useState<MetricCreate>(() => (metric ? toEditable(metric) : emptyMetric()));
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -261,7 +261,7 @@ function MetricEditor({ metric }: { metric: MetricDefinition | null }) {
               <Input id="m-dec" type="number" min={0} max={6} value={v.decimals} onChange={(e) => set({ decimals: Math.max(0, Math.min(6, Number(e.target.value) || 0)) })} />
             </FormRow>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <Switch checked={v.athlete_visible} onCheckedChange={(c) => set({ athlete_visible: c })} /> Visible to athletes in the app
+              <Switch checked={v.athlete_visible} onCheckedChange={(c) => set({ athlete_visible: c })} /> Visible to {terms.athletes.toLowerCase()} in the app
             </label>
           </CardContent>
         </Card>

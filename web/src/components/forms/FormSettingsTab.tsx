@@ -42,16 +42,16 @@ function defaults(f: Form): Values {
   };
 }
 
-const TOGGLES: { name: "athlete_can_submit" | "athlete_can_view" | "allow_multiple_per_day" | "archived"; label: string; hint: string }[] = [
-  { name: "athlete_can_submit", label: "Athletes can submit", hint: "Shown in the mobile app (scheduled forms appear as due)." },
-  { name: "athlete_can_view", label: "Athletes can view their answers", hint: "Their own submissions appear in their history." },
+const toggles = (athletes: string): { name: "athlete_can_submit" | "athlete_can_view" | "allow_multiple_per_day" | "archived"; label: string; hint: string }[] => [
+  { name: "athlete_can_submit", label: `${athletes} can submit`, hint: "Shown in the mobile app (scheduled forms appear as due)." },
+  { name: "athlete_can_view", label: `${athletes} can view their answers`, hint: "Their own submissions appear in their history." },
   { name: "allow_multiple_per_day", label: "Allow several submissions per day", hint: "E.g. one sRPE per session. Otherwise a second one is rejected (409)." },
   { name: "archived", label: "Archived", hint: "Hidden from entry and lists; data is kept." },
 ];
 
 export function FormSettingsTab({ form, onSaved }: { form: Form; onSaved(f: Form): void }) {
   const api = useApi();
-  const { orgId, isAdmin } = useOrg();
+  const { orgId, isAdmin, terms } = useOrg();
   const rhf = useForm<Values>({ resolver: zodResolver(schema), defaultValues: defaults(form) });
   const save = useMutation({
     mutationFn: (body: FormUpdate) => api.forms.update(orgId, form.id, body),
@@ -105,7 +105,7 @@ export function FormSettingsTab({ form, onSaved }: { form: Form; onSaved(f: Form
               </NativeSelect>
             </FormRow>
             <div className="grid gap-3 sm:col-span-2">
-              {TOGGLES.map((t) => (
+              {toggles(terms.athletes).map((t) => (
                 <Controller
                   key={t.name}
                   control={rhf.control}

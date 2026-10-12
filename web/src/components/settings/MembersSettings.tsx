@@ -41,7 +41,7 @@ export function MembersSettings() {
   return (
     <div className="grid max-w-5xl gap-3">
       <p className="text-sm text-muted-foreground">
-        Owners and admins see everything. Staff see the {terms.groups.toLowerCase()} they are assigned to (Groups → Staff access). {terms.athletes} only see their own data in the app.
+        Owners and admins see everything. Staff see the {terms.groups.toLowerCase()} they are assigned to ({terms.groups} → Staff access). {terms.athletes} only see their own data in the app.
       </p>
       <Card className="overflow-hidden">
         <Table>

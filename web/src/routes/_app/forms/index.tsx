@@ -42,7 +42,7 @@ export const Route = createFileRoute("/_app/forms/")({
 });
 
 function FormsPage() {
-  const { isAdmin } = useOrg();
+  const { isAdmin, terms } = useOrg();
   const navigate = useNavigate();
   const [kind, setKind] = useState<FormKind | "">("");
   const [archived, setArchived] = useState(false);
@@ -113,7 +113,7 @@ function FormsPage() {
                 <TableHead>Kind</TableHead>
                 <TableHead>Sensitivity</TableHead>
                 <TableHead>Version</TableHead>
-                <TableHead>Athlete app</TableHead>
+                <TableHead>{terms.athlete} app</TableHead>
                 <TableHead className="text-right">Updated</TableHead>
               </TableRow>
             </TableHeader>
@@ -187,7 +187,7 @@ function NewFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange(o: 
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { orgId } = useOrg();
+  const { orgId, terms } = useOrg();
   const form = useForm<NewFormValues>({
     resolver: zodResolver(newFormSchema),
     defaultValues: { name: "", description: "", kind: "questionnaire", sensitivity: "general", athlete_can_submit: true },
@@ -207,7 +207,7 @@ function NewFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange(o: 
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New form</DialogTitle>
-          <DialogDescription>You will land in the builder. Nothing is visible to athletes until you publish.</DialogDescription>
+          <DialogDescription>You will land in the builder. Nothing is visible to {terms.athletes.toLowerCase()} until you publish.</DialogDescription>
         </DialogHeader>
         <form
           id="new-form"
@@ -253,7 +253,7 @@ function NewFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange(o: 
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Switch checked={form.watch("athlete_can_submit")} onCheckedChange={(v) => form.setValue("athlete_can_submit", v)} />
-            Athletes fill it in the mobile app
+            {terms.athletes} fill it in the mobile app
           </label>
         </form>
         <DialogFooter>

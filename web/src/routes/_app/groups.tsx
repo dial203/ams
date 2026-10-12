@@ -290,14 +290,14 @@ function MembersTab({ group }: { group: Group }) {
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Remove ${removing ? athleteLabel(removing) : ""} from ${group.name}?`}
-        description="Membership history is kept: past data still shows they were in this group until the leaving date."
+        description={`Membership history is kept: past data still shows they were in this ${terms.group.toLowerCase()} until the leaving date.`}
         confirmLabel="Remove"
         destructive
         onConfirm={async () => {
           try {
             await api.groups.removeAthlete(orgId, group.id, removing!.id, { left_on: leftOn });
             invalidate();
-            toast.success("Removed from group");
+            toast.success(`Removed from ${group.name}`);
           } catch (e) {
             toastError(e, "Could not remove");
             throw e;
