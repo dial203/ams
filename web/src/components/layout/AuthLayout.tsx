@@ -17,13 +17,14 @@ export function AuthLayout({ title, description, children }: { title: string; de
             department works.
           </p>
         </div>
-        <svg aria-hidden className="absolute -right-24 bottom-0 h-[70%] opacity-40" viewBox="0 0 400 300" fill="none">
+        <svg aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%] w-full opacity-35" viewBox="0 0 400 300" preserveAspectRatio="none" fill="none">
           {Array.from({ length: 9 }).map((_, i) => (
             <path
               key={i}
               d={`M0 ${220 - i * 18} C 80 ${180 - i * 20}, 140 ${260 - i * 14}, 220 ${190 - i * 18} S 340 ${120 - i * 10}, 400 ${150 - i * 16}`}
               stroke={i % 3 === 0 ? "#22c55e" : "#52525b"}
               strokeWidth={i % 3 === 0 ? 1.5 : 1}
+              vectorEffect="non-scaling-stroke"
             />
           ))}
         </svg>

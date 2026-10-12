@@ -46,7 +46,7 @@ export function PreviewPanel({ schema }: { schema: FormSchema }) {
           <RotateCcw />
         </Button>
       </div>
-      <TabsContent value="preview" className="min-h-0 flex-1 overflow-y-auto p-4" forceMount>
+      <TabsContent value="preview" className="min-h-0 flex-1 overflow-y-auto p-4 data-[state=inactive]:hidden" forceMount>
         <div className="mb-3 flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
           <span>Interact to test visibility and calculations. Nothing is saved.</span>
           <label className="flex shrink-0 items-center gap-1.5">
