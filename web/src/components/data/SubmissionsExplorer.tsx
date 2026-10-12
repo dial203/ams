@@ -172,8 +172,8 @@ export function SubmissionsExplorer({ filters, onFiltersChange }: { filters: Exp
             <table className="w-full border-separate border-spacing-0 text-sm">
               <thead>
                 <tr>
-                  {["Day", terms.athlete, ...(form ? [] : ["Form"]), "Source", "Ver."].map((h, i) => (
-                    <th key={h} className={cn("sticky top-0 z-10 border-b bg-muted px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap text-muted-foreground", i === 1 && "left-0 z-20")}>
+                  {[terms.athlete, "Day", ...(form ? [] : ["Form"]), "Source", "Ver."].map((h, i) => (
+                    <th key={h} className={cn("sticky top-0 z-10 border-b bg-muted px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap text-muted-foreground", i === 0 && "left-0 z-20")}>
                       {h}
                     </th>
                   ))}
@@ -189,12 +189,12 @@ export function SubmissionsExplorer({ filters, onFiltersChange }: { filters: Exp
               <tbody>
                 {subs.data.items.map((s) => (
                   <tr key={s.id} className="group cursor-pointer hover:bg-muted/40" onClick={() => setOpen(s)}>
-                    <td className="border-b px-3 py-1.5 whitespace-nowrap tabular">
-                      <button type="button" className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40" onClick={(e) => { e.stopPropagation(); setOpen(s); }}>
-                        {formatDate(s.local_date)}
+                    <td className="sticky left-0 border-b bg-background px-3 py-1.5 font-medium whitespace-nowrap group-hover:bg-muted">
+                      <button type="button" className="rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40" onClick={(e) => { e.stopPropagation(); setOpen(s); }}>
+                        {s.athlete_display_name}
                       </button>
                     </td>
-                    <td className="sticky left-0 border-b bg-background px-3 py-1.5 font-medium whitespace-nowrap group-hover:bg-muted">{s.athlete_display_name}</td>
+                    <td className="border-b px-3 py-1.5 whitespace-nowrap tabular">{formatDate(s.local_date)}</td>
                     {!form && <td className="border-b px-3 py-1.5 whitespace-nowrap">{formName(s.form_id)}</td>}
                     <td className="border-b px-3 py-1.5">
                       <Badge variant="muted">{SOURCE_LABELS[s.source]}</Badge>
