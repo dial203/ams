@@ -33,7 +33,7 @@ Known gaps in the slice:
 
 ## Phase 2: daily operations
 
-- Push reminders for due questionnaires (Expo push) and staff alerts on red flags
+- Staff alerts on red flags; verify due-questionnaire push reminders (implemented in the worker) on real devices
 - Offline questionnaire completion on mobile with queued sync
 - Calendar: sessions, games/missions, testing days; link sRPE submissions to calendar events
 - Staff mobile mode: team RPE grid on a tablet at the end of a session
