@@ -179,6 +179,9 @@ def _similarity(norm_col: str, key: str, norm_label: str) -> float:
     stripped = re.sub(r"_(cm|kg|m|min|s|ms|w|au|pct|percent)$", "", norm_col)
     if stripped and stripped in (key, norm_label, re.sub(r"_(cm|kg|m|min|s|ms|w|au)$", "", key)):
         return 0.95
+    abbrev = norm_col.rstrip("s")
+    if len(abbrev) >= 4 and (key.startswith(abbrev) or norm_label.startswith(abbrev)):
+        return 0.8  # "Accels" -> accelerations, "Decel" -> decelerations
     return max(SequenceMatcher(None, norm_col, key).ratio(), SequenceMatcher(None, norm_col, norm_label).ratio())
 
 
