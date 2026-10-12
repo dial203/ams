@@ -50,7 +50,7 @@ BUILTIN_METRICS: list[dict[str, Any]] = [
         "slug": "srpe_load",
         "name": "Session load (sRPE)",
         "description": "Daily sum of session RPE x duration (Foster et al. 2001). Days without a session count as 0 "
-        "from the athlete's first logged session.",
+        "between the athlete's first and last logged session; days after the last one stay empty until logged.",
         "unit": "AU",
         "source": "form:session_rpe.srpe",
         "daily_agg": "sum",
