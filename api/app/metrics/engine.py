@@ -8,9 +8,12 @@ A definition's ``source`` gives a base daily series:
   provider), with ``provider/device`` kept as the day's source label for same-source baselines.
 * ``metric:<slug>``: another definition's transformed output (cycles are rejected).
 
-With ``fill_zero`` days without data count as 0 from the athlete's first observation onwards
-(before that the series is missing). The transform is then applied over enough history before
-``start`` (all history for EWMA-based transforms) and the result is sliced to [start, end].
+With ``fill_zero`` days without data count as 0 between the athlete's first and last observation
+(a rest day between logged sessions). Before the first and after the last observation the series is
+missing: an unlogged today, or days nobody has entered yet, are unknown rather than rest, so a
+morning readiness board does not show load collapsing before the day's session is logged.
+The transform is then applied over enough history before ``start`` (all history for EWMA-based
+transforms) and the result is sliced to [start, end].
 """
 
 from __future__ import annotations
@@ -33,6 +36,12 @@ from app.metrics import transforms
 from app.models import Form, MetricDefinition, Submission, WearableDaily
 
 SourceKind = Literal["form", "wearable", "metric"]
+# (first, last) local_date an athlete has data for a source
+Bounds = tuple[dt.date, dt.date]
+
+
+def _first(bounds: Bounds | None) -> dt.date | None:
+    return bounds[0] if bounds else None
 
 
 class MetricError(ValueError):
@@ -167,7 +176,7 @@ class MetricEngine:
 
     def _form_daily(
         self, ref: SeriesRef, agg: str, start: dt.date | None, end: dt.date
-    ) -> tuple[dict[uuid.UUID, dict[dt.date, float]], dict[uuid.UUID, dt.date]]:
+    ) -> tuple[dict[uuid.UUID, dict[dt.date, float]], dict[uuid.UUID, Bounds]]:
         form_id = self.db.scalar(select(Form.id).where(Form.org_id == self.org_id, Form.slug == ref.name))
         if form_id is None or not self.athlete_ids:
             return {}, {}
@@ -196,16 +205,18 @@ class MetricEngine:
             if num is not None:
                 per_day[aid][day].append(num)
         daily = {aid: {d: _agg(vals, agg) for d, vals in days.items()} for aid, days in per_day.items()}
-        # first observation of the field (for fill_zero), possibly before the loaded window
-        first_q = (
-            select(Submission.athlete_id, func.min(Submission.local_date)).where(*scope).group_by(Submission.athlete_id)
+        # first and last observation of the field (for fill_zero), possibly outside the loaded window
+        bounds_q = (
+            select(Submission.athlete_id, func.min(Submission.local_date), func.max(Submission.local_date))
+            .where(*scope)
+            .group_by(Submission.athlete_id)
         )
-        firsts: dict[uuid.UUID, dt.date] = {row[0]: row[1] for row in self.db.execute(first_q)}
-        return daily, firsts
+        bounds: dict[uuid.UUID, Bounds] = {row[0]: (row[1], row[2]) for row in self.db.execute(bounds_q)}
+        return daily, bounds
 
     def _wearable_daily(
         self, ref: SeriesRef, start: dt.date | None, end: dt.date
-    ) -> tuple[dict[uuid.UUID, dict[dt.date, tuple[float, str]]], dict[uuid.UUID, dt.date]]:
+    ) -> tuple[dict[uuid.UUID, dict[dt.date, tuple[float, str]]], dict[uuid.UUID, Bounds]]:
         if ref.name not in WEARABLE_METRICS or not self.athlete_ids:
             return {}, {}
         q = (
@@ -228,15 +239,15 @@ class MetricEngine:
         out: dict[uuid.UUID, dict[dt.date, tuple[float, str]]] = defaultdict(dict)
         for aid, day, value, provider, device in self.db.execute(q):
             out[aid][day] = (float(value), f"{provider}/{device}" if device else provider)  # latest refresh wins
-        firsts: dict[uuid.UUID, dt.date] = {}
-        first_q = (
-            select(WearableDaily.athlete_id, func.min(WearableDaily.local_date))
+        bounds: dict[uuid.UUID, Bounds] = {}
+        bounds_q = (
+            select(WearableDaily.athlete_id, func.min(WearableDaily.local_date), func.max(WearableDaily.local_date))
             .where(WearableDaily.athlete_id.in_(self.athlete_ids), WearableDaily.metric == ref.name)
             .group_by(WearableDaily.athlete_id)
         )
-        for aid, day in self.db.execute(first_q):
-            firsts[aid] = day
-        return out, firsts
+        for aid, first, last in self.db.execute(bounds_q):
+            bounds[aid] = (first, last)
+        return out, bounds
 
     def _base(
         self, defn: MetricDefinition, start: dt.date | None, end: dt.date, stack: tuple[str, ...]
@@ -252,40 +263,43 @@ class MetricEngine:
                 out[aid] = self._fill(s, None, defn.fill_zero)
             return out
         if ref.kind == "form":
-            daily, firsts = self._form_daily(ref, defn.daily_agg, start, end)
+            daily, bounds = self._form_daily(ref, defn.daily_agg, start, end)
             for aid in self.athlete_ids:
                 days = daily.get(aid, {})
-                first = min(days) if (start is None and days) else firsts.get(aid)
+                first = min(days) if (start is None and days) else _first(bounds.get(aid))
                 idx = self._calendar(first, start, end)
                 values = pd.Series([days.get(d.date(), np.nan) for d in idx], index=idx, dtype=float)
                 out[aid] = self._fill(
                     Series(values, pd.Series([None] * len(idx), index=idx, dtype=object)),
-                    firsts.get(aid),
+                    bounds.get(aid),
                     defn.fill_zero,
                 )
             return out
-        wdaily, firsts = self._wearable_daily(ref, start, end)
+        wdaily, bounds = self._wearable_daily(ref, start, end)
         for aid in self.athlete_ids:
             days = wdaily.get(aid, {})
-            first = min(days) if (start is None and days) else firsts.get(aid)
+            first = min(days) if (start is None and days) else _first(bounds.get(aid))
             idx = self._calendar(first, start, end)
             values = pd.Series([days[d.date()][0] if d.date() in days else np.nan for d in idx], index=idx, dtype=float)
             labels = pd.Series([days[d.date()][1] if d.date() in days else None for d in idx], index=idx, dtype=object)
-            out[aid] = self._fill(Series(values, labels), firsts.get(aid), defn.fill_zero)
+            out[aid] = self._fill(Series(values, labels), bounds.get(aid), defn.fill_zero)
         return out
 
     @staticmethod
-    def _fill(s: Series, first: dt.date | None, fill_zero: bool) -> Series:
+    def _fill(s: Series, bounds: Bounds | None, fill_zero: bool) -> Series:
+        """Zero-fill missing days between the first and last observation (``bounds``, or the series' own
+        observed span when None)."""
         if not fill_zero or s.values.empty:
             return s
-        if first is None:
+        if bounds is None:
             observed = s.values.dropna()
             if observed.empty:
                 return s
-            first_ts = observed.index[0]
+            first_ts, last_ts = observed.index[0], observed.index[-1]
         else:
-            first_ts = pd.Timestamp(first)
-        mask = (s.values.index >= first_ts) & s.values.isna().to_numpy()
+            first_ts, last_ts = pd.Timestamp(bounds[0]), pd.Timestamp(bounds[1])
+        idx = s.values.index
+        mask = (idx >= first_ts) & (idx <= last_ts) & s.values.isna().to_numpy()
         values = s.values.copy()
         values[mask] = 0.0
         return Series(values, s.sources)

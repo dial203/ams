@@ -174,8 +174,10 @@ Methodological guards built into the engine:
   is computed over different windows and is not interchangeable, so a device change
   restarts the baseline instead of producing a spurious deviation.
 - **Missing days stay missing.** Rolling windows honor `min_periods`; a day with
-  insufficient data yields null, never zero (except load sums, where a rest day is a
-  genuine zero only if a submission says so).
+  insufficient data yields null, never zero. Load metrics (`fill_zero`) count a day without
+  a session as rest (0) only between an athlete's first and last logged session; days after
+  the last one (an unlogged today) are unknown, so the morning board shows the last logged
+  day's value with its date instead of a load that collapses until the session is entered.
 - **ACWR ships with a caveat.** It is offered because practitioners ask for it, with
   EWMA and uncoupled variants, and its description notes the mathematical-coupling and
   ratio-scaling critiques (Lolli et al., 2019; Impellizzeri et al., 2020). Thresholds

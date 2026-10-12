@@ -118,9 +118,15 @@ def test_load_series_fill_zero_and_history(client: TestClient, db: Session) -> N
     assert s["points"][0]["value"] == 1000
     # monotony over days 5..11 (all 100) -> sd 0 -> null; strain null too
     assert series(client, org.id, staff.headers, "monotony_7d", a.id, day(11), day(11))["points"][0]["value"] is None
-    # after the last session the load keeps counting as rest days (0) up to `end`
-    s = series(client, org.id, staff.headers, "srpe_load", a.id, day(12), day(13))
-    assert [p["value"] for p in s["points"]] == [0, 0]
+    # after the last session nothing is known yet (e.g. today's session not logged): missing, not rest
+    s = series(client, org.id, staff.headers, "srpe_load", a.id, day(11), day(13))
+    assert [p["value"] for p in s["points"]] == [100, None, None]
+    s = series(client, org.id, staff.headers, "acute_load_7d", a.id, day(12), day(12))
+    assert s["points"][0]["value"] is None
+    # once a later session arrives, the gap becomes rest days
+    f.submit(db, org, form, a, {**sess, "rpe": 3, "duration": 100}, day(14))  # 300
+    s = series(client, org.id, staff.headers, "srpe_load", a.id, day(11), day(14))
+    assert [p["value"] for p in s["points"]] == [100, 0, 0, 300]
 
 
 def test_zscore_same_source_after_device_switch(client: TestClient, db: Session) -> None:

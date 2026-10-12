@@ -211,7 +211,7 @@ type Transform = "none" | "rolling_mean" | "rolling_sum" | "ewma" | "acwr" | "zs
 type Thresholds = { direction: "high_bad" | "low_bad" | "both_bad"; amber: number | null; red: number | null } | null;
 type MetricDefinition = {
   id: UUID; org_id: UUID; slug: string; name: string; description: string | null; unit: string | null;
-  source: SeriesRef; daily_agg: DailyAgg; fill_zero: boolean;   // fill_zero: days without data count as 0 (loads); otherwise missing
+  source: SeriesRef; daily_agg: DailyAgg; fill_zero: boolean;   // fill_zero: days without data between the athlete's first and last observation count as 0 (loads); otherwise missing
   transform: Transform; params: Record<string, number | string | boolean>;
   thresholds: Thresholds; decimals: number; athlete_visible: boolean; builtin: boolean;
 };
