@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
@@ -14,6 +15,7 @@ export function PageHeader({
   children?: ReactNode;
   className?: string;
 }) {
+  useDocumentTitle(typeof title === "string" ? title : null);
   return (
     <div className={cn("flex flex-col gap-3 border-b px-4 py-3 md:px-6", className)}>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">

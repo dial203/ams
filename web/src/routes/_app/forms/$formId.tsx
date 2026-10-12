@@ -22,6 +22,7 @@ import { toastError } from "@/lib/errors";
 import { sameJson } from "@/lib/json";
 import { useOrg } from "@/lib/org";
 import { useForm } from "@/lib/queries";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const TABS = ["build", "settings", "schedules", "versions"] as const;
 
@@ -58,6 +59,7 @@ function FormEditor({ form }: { form: Form }) {
   const published = form.current_version;
   const draftDiffersFromPublished = !published || !sameJson(draft, published.schema);
   const clientErrorCount = validateSchema(draft).length;
+  useDocumentTitle(form.name);
 
   useBlocker({
     shouldBlockFn: ({ next }) => dirty && next.pathname !== `/forms/${form.id}` && !window.confirm("Discard unsaved changes to this form?"),

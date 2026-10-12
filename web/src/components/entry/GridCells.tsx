@@ -45,6 +45,7 @@ function TypedCell({ field, value, row, col, athleteId, disabled, error, onChang
       aria-label={label}
       aria-invalid={error ? true : undefined}
       inputMode={numeric ? (field.type === "duration" ? "text" : "decimal") : undefined}
+      size={numeric ? 4 : 8}
       autoComplete="off"
       spellCheck={false}
       disabled={disabled}
@@ -161,6 +162,7 @@ function NativeCell({ field, value, row, col, athleteId, disabled, error, onChan
   return (
     <input
       type={type}
+      size={8}
       data-cell={`${row}:${col}`}
       aria-label={label}
       aria-invalid={error ? true : undefined}

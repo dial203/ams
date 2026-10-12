@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isStatus } from "@/lib/errors";
 import { useOrg } from "@/lib/org";
 import { useAthlete, useGroups } from "@/lib/queries";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const TABS = ["overview", "data", "wearables", "profile"] as const;
 type Tab = (typeof TABS)[number];
@@ -31,6 +32,7 @@ function AthleteDetailPage() {
   const { terms } = useOrg();
   const athlete = useAthlete(athleteId);
   const groups = useGroups();
+  useDocumentTitle(athlete.data?.display_name ?? terms.athlete);
 
   if (athlete.isPending) {
     return (
