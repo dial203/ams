@@ -367,6 +367,10 @@ def is_number(v: Any) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+def is_finite_number(v: Any) -> bool:
+    return is_number(v) and math.isfinite(v)
+
+
 def normalize_value(v: Any) -> Value:
     """Convert an input value into the language's value domain (numbers become floats)."""
     if v is None or isinstance(v, (bool, str)):
@@ -379,7 +383,10 @@ def normalize_value(v: Any) -> Value:
 
 
 def _finite(x: float) -> float | None:
-    return x if math.isfinite(x) else None
+    """Non-finite results become null; -0 is normalised to 0."""
+    if not math.isfinite(x):
+        return None
+    return 0.0 if x == 0 else x
 
 
 def values_equal(a: Value, b: Value) -> bool:
@@ -399,10 +406,10 @@ def values_equal(a: Value, b: Value) -> bool:
 def round_half_away(x: float, d: int) -> float | None:
     """``sign(x) * floor(abs(x) * 10^d + 0.5) / 10^d`` in doubles."""
     scale = 10.0**d
-    result = math.copysign(math.floor(abs(x) * scale + 0.5) / scale, x)
-    if result == 0:
-        result = 0.0
-    return _finite(result)
+    scaled = abs(x) * scale + 0.5
+    if not math.isfinite(scaled):
+        return None
+    return _finite(math.copysign(math.floor(scaled) / scale, x))
 
 
 def _power(a: float, b: float) -> float | None:
@@ -513,7 +520,7 @@ class _Evaluator:
     def eval(self, node: Node) -> Value:
         match node:
             case Literal(value):
-                return value
+                return _finite(value) if isinstance(value, float) else value
             case Ident(name):
                 if name not in self.env:
                     raise EvalError(f"unknown identifier {name!r}")
@@ -524,7 +531,7 @@ class _Evaluator:
                     return None
                 if not is_number(v):
                     raise EvalError("type error: unary minus on non-number")
-                return -float(v)
+                return _finite(-float(v))
             case Unary("not", operand):
                 return self.eval(operand) is not True
             case Binary("and", left, right):
@@ -553,29 +560,31 @@ class _Evaluator:
                     return v
             return None
         vals = [self.eval(a) for a in args]
-        if name == "sum":
+        if name in ("sum", "avg", "mean"):
             nums = _numbers(vals)
-            return _finite(math.fsum(nums)) if nums else None
-        if name in ("avg", "mean"):
-            nums = _numbers(vals)
-            return _finite(sum(nums) / len(nums)) if nums else None
+            if not nums:
+                return None
+            total = 0.0
+            for x in nums:  # left-to-right double addition, exactly as the TypeScript engine
+                total += x
+            return _finite(total if name == "sum" else total / len(nums))
         if name == "min":
             nums = _numbers(vals)
-            return min(nums) if nums else None
+            return _finite(min(nums)) if nums else None
         if name == "max":
             nums = _numbers(vals)
-            return max(nums) if nums else None
+            return _finite(max(nums)) if nums else None
         if name == "count":
             return float(sum(1 for v in _flatten(vals) if v is not None))
         if name == "round":
             x = vals[0]
-            d: Value = vals[1] if len(vals) > 1 else 0.0
-            if not is_number(d) or float(d) != math.floor(float(d)) or not (0 <= float(d) <= 10):
-                raise EvalError("type error: round() digits must be an integer 0-10")
             if x is None:
                 return None
             if not is_number(x):
                 raise EvalError("type error: round() on non-number")
+            d: Value = vals[1] if len(vals) > 1 else 0.0
+            if not is_finite_number(d) or float(d) != math.floor(float(d)) or not (0 <= float(d) <= 10):
+                raise EvalError("type error: round() digits must be an integer 0-10")
             return round_half_away(float(x), int(d))
         if name in _MATH_FUNCS:
             return _unary_math(_MATH_FUNCS[name], vals[0])
@@ -593,7 +602,7 @@ class _Evaluator:
                 result = max(result, float(lo))
             if hi is not None:
                 result = min(result, float(hi))
-            return result
+            return _finite(result)
         if name == "isnull":
             return vals[0] is None
         if name == "contains":

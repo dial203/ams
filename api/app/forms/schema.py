@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.forms.expr import RESERVED_WORDS, Node, ParseError, identifiers, is_number, parse
+from app.forms.expr import RESERVED_WORDS, Node, ParseError, identifiers, is_finite_number, is_number, parse
 
 KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 
@@ -126,7 +126,7 @@ def _check_options(f: dict[str, Any]) -> str | None:
             return "each option needs a value and a label"
         values.append(opt["value"])
     all_str = all(isinstance(v, str) for v in values)
-    all_num = all(is_number(v) for v in values)
+    all_num = all(is_finite_number(v) for v in values)
     if not (all_str or all_num):
         return "option values must be all strings or all numbers"
     normalized = [float(v) for v in values] if all_num else values
@@ -155,7 +155,8 @@ def validate_schema(schema: Any) -> list[SchemaError]:
     field_keys: set[str] = set()
     # (path_prefix, field dict) for every structurally valid field, in schema order
     fields_seen: list[tuple[str, dict[str, Any], int]] = []
-    value_keys: set[str] = set()  # keys of fields that hold a value (not info)
+    value_keys: set[str] = set()  # keys of fields that hold a value (anything but info)
+    info_keys: set[str] = set()
     section_field_keys: dict[int, set[str]] = {}
 
     for si, section in enumerate(sections):
@@ -187,30 +188,34 @@ def validate_schema(schema: Any) -> list[SchemaError]:
                 err(fp, "field must be an object")
                 continue
             key = f.get("key")
-            key_ok = False
+            key_ok = False  # a valid key (duplicates included: they still name a field)
             if not isinstance(key, str) or not KEY_PATTERN.match(key):
                 err(f"{fp}/key", "field key must match ^[a-z][a-z0-9_]{0,62}$")
             elif key in RESERVED_WORDS:
                 err(f"{fp}/key", f"{key!r} is a reserved word")
             elif key in field_keys:
                 err(f"{fp}/key", f"duplicate field key {key!r}")
+                key_ok = True
             else:
                 key_ok = True
                 field_keys.add(key)
-                section_field_keys[si].add(key)
             ftype = f.get("type")
             if ftype not in FIELD_TYPES:
                 err(f"{fp}/type", f"unknown field type {ftype!r}")
-            if not isinstance(f.get("label"), str) or not f.get("label"):
+            if not isinstance(f.get("label"), str):
                 err(f"{fp}/label", "label is required")
             _validate_field_extras(f, ftype, fp, err)
-            if key_ok and ftype in FIELD_TYPES and ftype != "info":
-                value_keys.add(key)
+            if key_ok:
+                section_field_keys[si].add(key)
+                if ftype == "info":
+                    info_keys.add(key)
+                else:
+                    value_keys.add(key)
             fields_seen.append((fp, f, si))
 
     # Expressions: parse, references, cycles, visible_if self references.
     calc_refs: dict[str, set[str]] = {}
-    calc_paths: dict[str, str] = {}
+    calc_paths: dict[str, list[str]] = {}
     for fp, f, _si in fields_seen:
         key = f.get("key")
         if f.get("type") == "calculated":
@@ -221,9 +226,10 @@ def validate_schema(schema: Any) -> list[SchemaError]:
                 bad = sorted(r for r in refs if r not in value_keys)
                 if bad:
                     err(f"{fp}/expression", f"unknown or non-value field reference(s): {', '.join(bad)}")
-                if isinstance(key, str):
-                    calc_refs[key] = refs
-                    calc_paths[key] = f"{fp}/expression"
+                # every parsed calculation joins the cycle graph, even with a bad reference
+                if isinstance(key, str) and KEY_PATTERN.match(key) and key not in RESERVED_WORDS:
+                    calc_refs.setdefault(key, set()).update(refs)
+                    calc_paths.setdefault(key, []).append(f"{fp}/expression")
         if "visible_if" in f and f["visible_if"] is not None:
             node = _parse_or_report(f["visible_if"], f"{fp}/visible_if", err, required=False)
             if node is not None:
@@ -249,18 +255,20 @@ def validate_schema(schema: Any) -> list[SchemaError]:
         if own:
             err(sp, f"section visible_if may not reference fields inside the section: {', '.join(own)}")
 
-    for key in sorted(_cyclic_nodes(calc_refs), key=lambda k: calc_paths[k]):
-        err(calc_paths[key], "calculated fields form a dependency cycle")
+    for key in _cyclic_nodes(calc_refs):
+        for path in calc_paths[key]:
+            err(path, "calculated fields form a dependency cycle")
 
-    return _dedupe(errors)
+    return _first_per_path(errors)
 
 
-def _dedupe(errors: list[SchemaError]) -> list[SchemaError]:
-    seen: set[tuple[str, str]] = set()
+def _first_per_path(errors: list[SchemaError]) -> list[SchemaError]:
+    """One error per offending path (the first problem found there), like the TypeScript engine."""
+    seen: set[str] = set()
     out: list[SchemaError] = []
     for e in errors:
-        if (e.path, e.message) not in seen:
-            seen.add((e.path, e.message))
+        if e.path not in seen:
+            seen.add(e.path)
             out.append(e)
     return out
 
@@ -281,63 +289,82 @@ def _parse_or_report(text: Any, path: str, err: Any, *, required: bool) -> Node 
 
 
 def _validate_field_extras(f: dict[str, Any], ftype: Any, fp: str, err: Any) -> None:
-    if "required" in f and not isinstance(f["required"], bool):
-        err(f"{fp}/required", "required must be a boolean")
-    for k in ("help", "unit"):
-        if k in f and f[k] is not None and not isinstance(f[k], str):
-            err(f"{fp}/{k}", f"{k} must be a string")
-    if ftype in ("number", "duration"):
-        for k in ("min", "max", "step"):
-            if k in f and f[k] is not None and not is_number(f[k]):
-                err(f"{fp}/{k}", f"{k} must be a number")
-        if is_number(f.get("min")) and is_number(f.get("max")) and f["min"] > f["max"]:
-            err(f"{fp}/max", "max must be >= min")
-        if is_number(f.get("step")) and f["step"] <= 0:
-            err(f"{fp}/step", "step must be positive")
-        if "decimals" in f and f["decimals"] is not None and not _is_small_int(f["decimals"]):
-            err(f"{fp}/decimals", "decimals must be an integer 0-10")
+    """Type-specific keys: required ones (rule 3) and optional ones *when present* (same as @ams/shared)."""
+
+    def present(k: str) -> bool:
+        return k in f
+
+    def optional_number(k: str) -> None:
+        if present(k) and not is_finite_number(f[k]):
+            err(f"{fp}/{k}", f"{k} must be a number")
+
+    def optional_positive(k: str) -> None:
+        if present(k) and not (is_finite_number(f[k]) and f[k] > 0):
+            err(f"{fp}/{k}", f"{k} must be a number greater than 0")
+
+    def optional_count(k: str, minimum: int) -> None:
+        if present(k) and not (_is_int(f[k]) and f[k] >= minimum):
+            err(f"{fp}/{k}", f"{k} must be a whole number of at least {minimum}")
+
+    def optional_decimals() -> None:
+        if present("decimals") and not _is_small_int(f["decimals"]):
+            err(f"{fp}/decimals", "decimals must be a whole number from 0 to 10")
+
+    def min_not_above_max() -> None:
+        if is_finite_number(f.get("min")) and is_finite_number(f.get("max")) and f["min"] > f["max"]:
+            err(f"{fp}/max", "max must not be less than min")
+
+    if ftype == "number":
+        optional_number("min")
+        optional_number("max")
+        optional_positive("step")
+        optional_decimals()
+        min_not_above_max()
+    elif ftype == "duration":
+        optional_number("min")
+        optional_number("max")
+        min_not_above_max()
     elif ftype == "scale":
         mn, mx = f.get("min"), f.get("max")
-        if not is_number(mn):
-            err(f"{fp}/min", "scale needs a numeric min")
-        if not is_number(mx):
-            err(f"{fp}/max", "scale needs a numeric max")
-        elif is_number(mn) and mn >= mx:
+        if not is_finite_number(mn):
+            err(f"{fp}/min", "a scale needs a numeric min")
+        if not is_finite_number(mx):
+            err(f"{fp}/max", "a scale needs a numeric max")
+        elif is_finite_number(mn) and mn >= mx:
             err(f"{fp}/max", "scale max must be greater than min")
-        step = f.get("step")
-        if step is not None and (not is_number(step) or step <= 0):
-            err(f"{fp}/step", "step must be a positive number")
-        anchors = f.get("anchors")
-        if anchors is not None and not isinstance(anchors, dict):
-            err(f"{fp}/anchors", "anchors must be an object")
-        if f.get("display") is not None and f.get("display") not in ("buttons", "slider"):
+        optional_positive("step")
+        if present("anchors"):
+            anchors = f["anchors"]
+            if not isinstance(anchors, dict) or any(
+                k in anchors and not isinstance(anchors[k], str) for k in ("min", "max", "mid")
+            ):
+                err(f"{fp}/anchors", "anchors must be an object with optional text min, mid and max")
+        if present("display") and f["display"] not in ("buttons", "slider"):
             err(f"{fp}/display", "display must be 'buttons' or 'slider'")
     elif ftype in ("select", "multiselect"):
         problem = _check_options(f)
         if problem:
             err(f"{fp}/options", problem)
         if ftype == "multiselect":
-            for k in ("min_selected", "max_selected"):
-                if k in f and f[k] is not None and not (_is_int(f[k]) and f[k] >= 0):
-                    err(f"{fp}/{k}", f"{k} must be a non-negative integer")
+            optional_count("min_selected", 0)
+            optional_count("max_selected", 1)
             mn, mx = f.get("min_selected"), f.get("max_selected")
-            if _is_int(mn) and _is_int(mx) and mn > mx:
-                err(f"{fp}/max_selected", "max_selected must be >= min_selected")
+            if is_finite_number(mn) and is_finite_number(mx) and mn > mx:
+                err(f"{fp}/max_selected", "max_selected must not be less than min_selected")
     elif ftype in ("text", "textarea"):
-        ml = f.get("max_length")
-        if ml is not None and not (_is_int(ml) and ml > 0):
-            err(f"{fp}/max_length", "max_length must be a positive integer")
+        optional_count("max_length", 1)
     elif ftype == "date":
         for k in ("min", "max"):
-            if k in f and f[k] is not None and not _is_date(f[k]):
+            if present(k) and not _is_date(f[k]):
                 err(f"{fp}/{k}", f"{k} must be a YYYY-MM-DD date")
+        if _is_date(f.get("min")) and _is_date(f.get("max")) and f["min"] > f["max"]:
+            err(f"{fp}/max", "max must not be before min")
     elif ftype == "calculated":
-        if "decimals" in f and f["decimals"] is not None and not _is_small_int(f["decimals"]):
-            err(f"{fp}/decimals", "decimals must be an integer 0-10")
+        optional_decimals()
 
 
 def _is_int(v: Any) -> bool:
-    return (isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, float) and v.is_integer())
+    return is_finite_number(v) and float(v).is_integer()
 
 
 def _is_small_int(v: Any) -> bool:

@@ -9,7 +9,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
-from app.forms.expr import EvalError, Node, ParseError, evaluate as eval_expr, identifiers, is_number, parse
+from app.forms.expr import EvalError, Node, ParseError, identifiers, is_finite_number, parse
+from app.forms.expr import evaluate as eval_expr
 from app.forms.expr import round_half_away, values_equal
 from app.forms.schema import FieldInfo, SchemaIndex, index_schema
 
@@ -58,7 +59,7 @@ def _eval_or_error(text: str | None, env: dict[str, Any]) -> tuple[bool, Any]:
 
 
 def round_decimals(x: Any, d: Any) -> Any:
-    if d is None or not is_number(x) or isinstance(d, bool) or not isinstance(d, (int, float)):
+    if d is None or not is_finite_number(x) or isinstance(d, bool) or not isinstance(d, (int, float)):
         return x
     return round_half_away(float(x), int(d))
 
@@ -193,7 +194,7 @@ def _in_options(value: Any, options: list[Any]) -> bool:
 
 
 def _norm(v: Any) -> Any:
-    if is_number(v):
+    if is_finite_number(v):
         return float(v)
     return v
 
@@ -206,10 +207,10 @@ def _check_field(f: FieldInfo, value: Any) -> str | None:
         return "required" if required else None
     # 2. type
     if t in ("number", "scale", "duration"):
-        if not is_number(value):
+        if not is_finite_number(value):  # NaN / Infinity are not JSON numbers
             return "invalid_type"
     elif t == "select":
-        if not (isinstance(value, str) or is_number(value)):
+        if not (isinstance(value, str) or is_finite_number(value)):
             return "invalid_type"
     elif t == "multiselect":
         if not isinstance(value, list):
@@ -239,15 +240,16 @@ def _check_field(f: FieldInfo, value: Any) -> str | None:
     # 5. scale grid
     if t == "scale":
         mn = spec.get("min")
-        step = spec.get("step") if is_number(spec.get("step")) else 1
-        if is_number(mn) and step:
+        raw_step = spec.get("step")
+        step = raw_step if is_finite_number(raw_step) and raw_step > 0 else 1
+        if is_finite_number(mn):
             q = (float(value) - float(mn)) / float(step)
             if abs(q - round(q)) > 1e-9:
                 return "invalid_step"
     # 6. range
     if t in ("number", "scale", "duration"):
         mn, mx = spec.get("min"), spec.get("max")
-        if (is_number(mn) and value < mn) or (is_number(mx) and value > mx):
+        if (is_finite_number(mn) and value < mn) or (is_finite_number(mx) and value > mx):
             return "out_of_range"
     if t == "date":
         mn, mx = spec.get("min"), spec.get("max")
@@ -255,12 +257,12 @@ def _check_field(f: FieldInfo, value: Any) -> str | None:
             return "out_of_range"
     if t == "multiselect":
         mn, mx = spec.get("min_selected"), spec.get("max_selected")
-        if (is_number(mn) and len(value) < mn) or (is_number(mx) and len(value) > mx):
+        if (is_finite_number(mn) and len(value) < mn) or (is_finite_number(mx) and len(value) > mx):
             return "out_of_range"
     # 7. length
     if t in ("text", "textarea"):
         default = 500 if t == "text" else 5000
-        max_length = spec.get("max_length") if is_number(spec.get("max_length")) else default
+        max_length = spec.get("max_length") if is_finite_number(spec.get("max_length")) else default
         if len(value) > max_length:
             return "too_long"
     return None
