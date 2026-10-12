@@ -1,4 +1,5 @@
 import type {
+  FormSchedule,
   AccessRole,
   AthleteStatus,
   DailyAgg,
@@ -10,6 +11,7 @@ import type {
   SubmissionSource,
   Transform,
 } from "@ams/shared";
+import { formatDate } from "@/lib/field-format";
 
 export const GROUP_KIND_LABELS: Record<GroupKind, string> = {
   team: "Team",
@@ -107,3 +109,11 @@ export const WEEKDAYS = [
   { n: 6, short: "Sat" },
   { n: 7, short: "Sun" },
 ] as const;
+
+export function describeRecurrence(s: Pick<FormSchedule, "recurrence" | "days_of_week" | "start_date">): string {
+  if (s.recurrence === "daily") return "Every day";
+  if (s.recurrence === "once") return `Once on ${formatDate(s.start_date)}`;
+  const days = [...s.days_of_week].sort().map((d) => WEEKDAYS.find((w) => w.n === d)?.short ?? d);
+  return days.length ? `Weekly: ${days.join(", ")}` : "Weekly (no days)";
+}
+

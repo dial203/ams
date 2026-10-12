@@ -21,7 +21,7 @@ export function FormRow({
   optional?: boolean;
 }) {
   return (
-    <div className={cn("grid gap-1.5", className)}>
+    <div className={cn("grid content-start gap-1.5", className)}>
       <Label htmlFor={htmlFor}>
         {label}
         {optional && <span className="font-normal text-muted-foreground">(optional)</span>}
