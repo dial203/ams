@@ -243,14 +243,15 @@ function SingleEntry({ form, athleteId, date }: { form: Form; athleteId: string 
         </Alert>
       )}
       {!duplicate && already.length > 0 && (
-        <Alert variant="info">
+        <Alert variant={form.allow_multiple_per_day ? "info" : "warning"}>
           <CircleCheck />
           <AlertTitle>
             {already.length === 1 ? "There is already a submission" : `There are ${already.length} submissions`} for this day
           </AlertTitle>
           <AlertDescription>
+            {!form.allow_multiple_per_day && <p>{form.name} allows one per day, so a new one would be rejected. Edit the existing one instead.</p>}
             <Button size="sm" variant="link" className="h-auto p-0" onClick={() => setOpen(already[0]!)}>
-              View {already.length === 1 ? "it" : "the latest"}
+              {form.allow_multiple_per_day ? `View ${already.length === 1 ? "it" : "the latest"}` : "Open and edit it"}
             </Button>
           </AlertDescription>
         </Alert>

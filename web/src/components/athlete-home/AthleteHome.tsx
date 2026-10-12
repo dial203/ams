@@ -35,10 +35,19 @@ export function AthleteHome() {
     queryFn: ({ signal }) => api.self.submissions(orgId, params, { signal }),
   });
   const due = useQuery({ queryKey: queryKeys.self.forms(orgId), queryFn: ({ signal }) => api.self.forms(orgId, {}, { signal }) });
-  const formName = (id: string) => due.data?.find((d) => d.form.id === id)?.form.name ?? "Form";
+  // Forms the athlete may read (names and schemas for submissions of forms they cannot submit).
+  const forms = useQuery({
+    queryKey: queryKeys.forms.list(orgId, {}),
+    queryFn: ({ signal }) => api.forms.list(orgId, {}, { signal }),
+    retry: false,
+  });
+  const formName = (id: string) =>
+    due.data?.find((d) => d.form.id === id)?.form.name ?? forms.data?.find((f) => f.id === id)?.name ?? "Form";
   const schemaFor = (s: Submission) => {
     const d = due.data?.find((x) => x.form.id === s.form_id);
-    return d && d.version.id === s.form_version_id ? d.version.schema : (d?.form.current_version?.id === s.form_version_id ? d.form.current_version.schema : undefined);
+    if (d && d.version.id === s.form_version_id) return d.version.schema;
+    const f = forms.data?.find((x) => x.id === s.form_id) ?? d?.form;
+    return f?.current_version?.id === s.form_version_id ? f.current_version.schema : undefined;
   };
 
   return (

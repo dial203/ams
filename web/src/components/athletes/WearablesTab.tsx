@@ -97,9 +97,11 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
     );
   }
   const s = status.data;
+  const owMissing = isNotConfigured(providers.error);
 
   return (
     <div className="grid gap-4">
+      {owMissing && <OwNotConfigured error={providers.error} />}
       <Card>
         <CardHeader>
           <div>
@@ -115,16 +117,16 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {!s.linked && (
-              <Button size="sm" variant="outline" onClick={() => link.mutate()} disabled={link.isPending}>
+              <Button size="sm" variant="outline" onClick={() => link.mutate()} disabled={link.isPending || owMissing}>
                 {link.isPending ? <Spinner className="text-current" /> : <Link2 />}
                 Link
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={() => refresh.mutate()} disabled={!s.linked || refresh.isPending}>
+            <Button size="sm" variant="outline" onClick={() => refresh.mutate()} disabled={!s.linked || refresh.isPending || owMissing}>
               <RefreshCw className={refresh.isPending ? "animate-spin" : undefined} />
               Refresh now
             </Button>
-            <Button size="sm" onClick={() => setConnectOpen(true)}>
+            <Button size="sm" onClick={() => setConnectOpen(true)} disabled={owMissing}>
               <Plug /> Connect provider
             </Button>
           </div>
@@ -134,7 +136,11 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
             <EmptyState
               icon={Watch}
               title="No connected providers"
-              description="Connect a cloud provider (Garmin, Oura, Whoop, Polar…) with an authorization link, or ask them to enable Apple Health / Health Connect in the mobile app."
+              description={
+                owMissing
+                  ? "Device connections become available once Open Wearables is configured. Cached daily data below still shows."
+                  : "Connect a cloud provider (Garmin, Oura, Whoop, Polar…) with an authorization link, or ask them to enable Apple Health / Health Connect in the mobile app."
+              }
             />
           ) : (
             <Table containerClassName="px-1">

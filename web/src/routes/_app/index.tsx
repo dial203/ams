@@ -99,7 +99,11 @@ function ReadinessPage() {
           <EmptyState
             icon={Gauge}
             title={`No ${terms.athletes.toLowerCase()} here`}
-            description={`There are no active ${terms.athletes.toLowerCase()} in this ${terms.group.toLowerCase()} that you can see.`}
+            description={
+              groupId
+                ? `There are no active ${terms.athletes.toLowerCase()} in this ${terms.group.toLowerCase()} that you can see.`
+                : `You can see no active ${terms.athletes.toLowerCase()} yet. Staff see the ${terms.groups.toLowerCase()} an admin assigns them to.`
+            }
           />
         ) : (
           <>

@@ -7,6 +7,7 @@ export default async function globalSetup(): Promise<void> {
   } catch (e) {
     throw new Error(
       `The AMS API is not reachable at ${api} (${String(e)}). Start it with the demo seed (see web/README.md) or set E2E_API_URL.`,
+      { cause: e },
     );
   }
 }

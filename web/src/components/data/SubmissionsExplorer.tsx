@@ -3,6 +3,7 @@ import { Database, Download, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AthletePicker } from "@/components/AthletePicker";
+import { GroupFilterChip } from "@/components/GroupFilterChip";
 import { Pagination } from "@/components/Pagination";
 import { EmptyState, ErrorState, Spinner } from "@/components/states";
 import { SubmissionSheet } from "@/components/submissions/SubmissionSheet";
@@ -129,6 +130,7 @@ export function SubmissionsExplorer({ filters, onFiltersChange }: { filters: Exp
           </NativeSelect>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <GroupFilterChip />
           {subs.isFetching && <Spinner />}
           <Popover>
             <PopoverTrigger asChild>

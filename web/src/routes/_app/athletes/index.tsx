@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { AthleteName, StatusBadge } from "@/components/athletes/AthleteBits";
 import { AthleteFields } from "@/components/athletes/AthleteForm";
+import { GroupFilterChip } from "@/components/GroupFilterChip";
 import { PageBody, PageHeader, Toolbar } from "@/components/page";
 import { Pagination } from "@/components/Pagination";
 import { EmptyState, ErrorState, Spinner } from "@/components/states";
@@ -96,6 +97,7 @@ function AthletesPage() {
             <option value="archived">Archived</option>
             <option value="all">All but archived</option>
           </NativeSelect>
+          <GroupFilterChip />
           {athletes.isFetching && <Spinner />}
           <div className="ml-auto">
             {athletes.data && (
