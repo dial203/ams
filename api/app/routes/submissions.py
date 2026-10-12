@@ -7,7 +7,6 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from fastapi.responses import PlainTextResponse
 from sqlalchemy import Select, func, select
 
 from app import audit
@@ -202,7 +201,11 @@ def bulk_create(body: BulkSubmissionCreate, p: PrincipalDep, db: DbSession) -> B
     return BulkSubmissionResult(created=created, errors=errors)
 
 
-@router.get("/export", response_class=PlainTextResponse, responses={200: {"content": {"text/csv": {}}}})
+@router.get(
+    "/export",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}, "description": "CSV file"}},
+)
 def export_csv(
     p: PrincipalDep,
     db: DbSession,
