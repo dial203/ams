@@ -155,7 +155,7 @@ class OpenWearablesClient:
             "email": email,
             "external_user_id": external_user_id,
         }
-        return self._parse(OWUser, self._request("POST", "/users", json=body))
+        return self._parse(OWUser, self._request("POST", "/users", json={k: v for k, v in body.items() if v is not None}))
 
     # ------------------------------------------------------------------ providers / connections
     def list_providers(self, enabled_only: bool = True) -> list[OWProvider]:
