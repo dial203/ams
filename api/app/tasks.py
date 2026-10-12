@@ -63,3 +63,17 @@ def send_due_reminders() -> int:
         return sent
     finally:
         db.close()
+
+
+@celery_app.task(name="ams.cleanup_uploads")
+def cleanup_uploads() -> int:
+    """Delete import uploads older than their 24 h retention."""
+    from app.services.imports import cleanup_expired_uploads
+
+    db = SessionLocal()
+    try:
+        removed = cleanup_expired_uploads(db)
+        db.commit()
+        return removed
+    finally:
+        db.close()

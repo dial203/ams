@@ -32,6 +32,10 @@ celery_app.conf.update(
             "task": "ams.send_due_reminders",
             "schedule": crontab(minute="*/15"),
         },
+        "import-upload-cleanup": {
+            "task": "ams.cleanup_uploads",
+            "schedule": crontab(minute=41),
+        },
     },
 )
 

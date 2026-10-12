@@ -249,3 +249,34 @@ def test_parse_helpers() -> None:
     assert parse_when("2026-10-05", None, "UTC") == (None, dt.date(2026, 10, 5))
     observed, day = parse_when("2026-10-05T23:30:00-05:00", None, "UTC")
     assert day == dt.date(2026, 10, 6)
+
+
+def test_expired_uploads_are_removed(client: TestClient, db: Session) -> None:
+    from pathlib import Path
+
+    from app.models import ImportUpload
+    from app.tasks import cleanup_uploads
+
+    org = f.org(db)
+    admin = f.member(db, org, "admin")
+    form = f.form(db, org, "simple", f.NUMBER_SCHEMA)
+    pv = preview(client, org.id, form.id, admin.headers, "x.csv", b"code,value\nA,1\n")
+    upload = db.get(ImportUpload, pv["upload_id"])
+    assert upload is not None and Path(upload.stored_path).exists()
+    path = Path(upload.stored_path)
+    upload.expires_at = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1)
+    db.commit()
+    assert cleanup_uploads.delay().get() == 1
+    assert not path.exists()
+    r = client.post(
+        f"{API}/orgs/{org.id}/forms/{form.id}/imports",
+        headers=admin.headers,
+        json={
+            "upload_id": pv["upload_id"],
+            "mapping": {"value": "value"},
+            "athlete_column": "code",
+            "athlete_match": "code",
+            "default_date": "2026-10-01",
+        },
+    )
+    assert r.status_code == 404

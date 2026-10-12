@@ -115,7 +115,7 @@ def update_metric(metric_id: uuid.UUID, body: MetricUpdate, p: AdminDep, db: DbS
         check_source="source" in fields and source != m.source,
     )
     before = metric_out(m).model_dump(mode="json")
-    apply_metric_fields(m, {k: getattr(body, k) if k == "thresholds" else v for k, v in fields.items()})
+    apply_metric_fields(m, fields)
     audit.record(
         db,
         org_id=p.org_id,
