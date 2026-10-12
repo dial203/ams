@@ -24,6 +24,7 @@ import { useForms, useGroups, useSubmissions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 const PAGE = 50;
+const NUMERIC = new Set(["number", "scale", "duration", "calculated"]);
 
 export interface ExplorerFilters {
   formId: string | null;
@@ -176,7 +177,7 @@ export function SubmissionsExplorer({ filters, onFiltersChange }: { filters: Exp
                   ))}
                   {form &&
                     fields.map((f) => (
-                      <th key={f.key} title={f.key} className={cn("sticky top-0 z-10 max-w-40 border-b border-l bg-muted px-2 py-1.5 text-right text-xs font-medium whitespace-nowrap", f.type === "calculated" ? "text-muted-foreground italic" : "text-foreground")}>
+                      <th key={f.key} title={f.key} className={cn("sticky top-0 z-10 max-w-40 border-b border-l bg-muted px-2 py-1.5 text-xs font-medium whitespace-nowrap", NUMERIC.has(f.type) ? "text-right" : "text-left", f.type === "calculated" ? "text-muted-foreground italic" : "text-foreground")}>
                         <span className="block truncate">{f.label}</span>
                       </th>
                     ))}
@@ -199,7 +200,7 @@ export function SubmissionsExplorer({ filters, onFiltersChange }: { filters: Exp
                     <td className="border-b px-3 py-1.5 text-muted-foreground tabular">v{s.form_version}</td>
                     {form &&
                       fields.map((f) => (
-                        <td key={f.key} className={cn("max-w-48 truncate border-b border-l px-2 py-1.5 text-right tabular", f.type === "calculated" && "bg-muted/30 text-muted-foreground")}>
+                        <td key={f.key} className={cn("max-w-48 truncate border-b border-l px-2 py-1.5 tabular", NUMERIC.has(f.type) ? "text-right" : "text-left", f.type === "calculated" && "bg-muted/30 text-muted-foreground")}>
                           {formatCellValue(f, f.type === "calculated" ? s.computed[f.key] : s.values[f.key])}
                         </td>
                       ))}
