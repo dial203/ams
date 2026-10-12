@@ -122,7 +122,7 @@ test("form builder: create, edit with live preview, publish", async () => {
   await page.getByRole("button", { name: "Publish" }).click();
   await expect(page.getByText("Published version 1")).toBeVisible();
   await page.getByRole("tab", { name: "Versions" }).click();
-  await expect(page.getByText("Live")).toBeVisible();
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
 });
 
 test("team grid: keyboard entry and bulk save", async () => {
