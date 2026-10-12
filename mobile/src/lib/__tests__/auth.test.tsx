@@ -75,7 +75,8 @@ describe("API client wiring", () => {
       { [STORAGE_KEYS.accessToken]: "a1", [STORAGE_KEYS.refreshToken]: "r1" },
     );
     await t.tokens.load();
-    await expect(t.api.me.get()).rejects.toMatchObject({ status: 401 });
+    // the request fails with the network error (shown as offline), not as an auth failure
+    await expect(t.api.me.get()).rejects.toBeInstanceOf(TypeError);
     expect(t.onSessionExpired).not.toHaveBeenCalled();
     expect(t.tokens.getRefreshToken()).toBe("r1");
   });

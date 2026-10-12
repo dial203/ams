@@ -16,13 +16,11 @@ export interface AmsApiOptions {
  * - every request sends the in-memory access token;
  * - a 401 triggers one shared `POST /auth/refresh` with the stored refresh token (rotating:
  *   the new pair replaces the old one), then the request is retried;
- * - only an auth rejection of the refresh (400/401/403) ends the session. The shared client
- *   reports every failed refresh through `onAuthFailure`, including a phone that is simply
- *   offline, so transient failures are filtered out here to keep offline athletes signed in.
+ * - only an auth rejection of the refresh (400/401/403) ends the session. Any other failure
+ *   (offline, server error) is rethrown, which the shared client passes to the caller
+ *   without calling `onAuthFailure`, so offline athletes stay signed in.
  */
 export function createAmsApi(options: AmsApiOptions): ApiClient {
-  let transientRefreshFailure = false;
-
   const client: ApiClient = createApiClient({
     baseUrl: options.baseUrl,
     ...(options.fetch ? { fetch: options.fetch } : {}),
@@ -36,18 +34,11 @@ export function createAmsApi(options: AmsApiOptions): ApiClient {
         await options.tokens.set(pair);
         return true;
       } catch (error) {
-        const rejected = isApiError(error) && (error.status === 400 || error.status === 401 || error.status === 403);
-        if (!rejected) transientRefreshFailure = true;
-        return false;
+        if (isApiError(error) && (error.status === 400 || error.status === 401 || error.status === 403)) return false;
+        throw error;
       }
     },
-    onAuthFailure() {
-      if (transientRefreshFailure) {
-        transientRefreshFailure = false;
-        return;
-      }
-      options.onSessionExpired();
-    },
+    onAuthFailure: () => options.onSessionExpired(),
   });
   return client;
 }

@@ -89,10 +89,13 @@ export interface ApiClientOptions {
   /**
    * Called on a 401 to obtain a new access token (typically `client.auth.refresh` with the
    * stored refresh token, then storing the new pair). Resolve `true` when a new access
-   * token is available. Concurrent 401s share one call.
+   * token is available and `false` when the server rejected the refresh token (the session
+   * is over). Throw on a transient failure such as no network: the request then rejects
+   * with that error and `onAuthFailure` is not called, so an offline user stays signed in.
+   * Concurrent 401s share one call.
    */
   refresh?(): Promise<boolean>;
-  /** Called when a 401 cannot be recovered (no/failed refresh, or still 401 after retry). */
+  /** Called when a 401 cannot be recovered (no refresh, refresh rejected, or still 401 after retry). */
   onAuthFailure?(): void;
   /** Extra headers sent with every request (e.g. an app version). */
   headers?: Record<string, string>;
@@ -187,7 +190,11 @@ export function createApiClient(options: ApiClientOptions) {
 
   let refreshing: Promise<boolean> | null = null;
 
-  /** Runs `options.refresh` once for all concurrent callers; failures count as `false`. */
+  /**
+   * Runs `options.refresh` once for all concurrent callers. Resolves `false` (after
+   * `onAuthFailure`) when the refresh was rejected; rejects with the refresh's own error when
+   * it threw, leaving the session in place.
+   */
   function refreshOnce(): Promise<boolean> {
     if (!options.refresh) {
       options.onAuthFailure?.();
@@ -196,12 +203,7 @@ export function createApiClient(options: ApiClientOptions) {
     if (!refreshing) {
       const refresh = options.refresh;
       refreshing = (async () => {
-        let ok: boolean;
-        try {
-          ok = (await refresh()) === true;
-        } catch {
-          ok = false;
-        }
+        const ok = (await refresh()) === true;
         if (!ok) options.onAuthFailure?.();
         return ok;
       })();

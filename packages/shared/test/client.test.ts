@@ -213,16 +213,19 @@ describe("401 handling", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it("treats a throwing refresh as failure", async () => {
+  it("propagates a throwing refresh (e.g. offline) without ending the session", async () => {
     const onAuthFailure = vi.fn();
-    const { client } = setup(() => json(401, { detail: "x" }), {
-      refresh: async () => {
-        throw new Error("network");
-      },
-      onAuthFailure,
+    const refresh = vi.fn(async () => {
+      throw new TypeError("Network request failed");
     });
-    await expect(client.me.get()).rejects.toMatchObject({ status: 401 });
-    expect(onAuthFailure).toHaveBeenCalledTimes(1);
+    const { client } = setup(() => json(401, { detail: "x" }), { refresh, onAuthFailure });
+    const results = await Promise.allSettled([client.me.get(), client.orgs.get("o")]);
+    for (const r of results) {
+      expect(r.status).toBe("rejected");
+      expect((r as PromiseRejectedResult).reason).toBeInstanceOf(TypeError);
+    }
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(onAuthFailure).not.toHaveBeenCalled();
   });
 
   it("calls onAuthFailure when still 401 after the retry", async () => {
