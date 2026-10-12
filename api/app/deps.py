@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 
 from app.database import DbSession
-from app.models import Athlete, OrgMembership, Organization, User
+from app.models import Athlete, Organization, OrgMembership, User
 from app.permissions import Principal
 from app.security import TokenError, decode_access_token
 

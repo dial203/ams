@@ -63,8 +63,9 @@ def test_csv_preview_commit_and_rollback(client: TestClient, db: Session) -> Non
         "date_column": "Date",
     }
     # dry run: nothing saved, same report
-    dry = client.post(f"{API}/orgs/{org.id}/forms/{form.id}/imports", headers=admin.headers,
-                      json={**commit, "dry_run": True})
+    dry = client.post(
+        f"{API}/orgs/{org.id}/forms/{form.id}/imports", headers=admin.headers, json={**commit, "dry_run": True}
+    )
     assert dry.status_code == 201, dry.text
     assert dry.json()["dry_run"] is True and dry.json()["created_count"] == 2
     assert db.scalar(select(Submission.id)) is None
@@ -127,15 +128,25 @@ def test_xlsx_with_name_email_and_external_id_matching(client: TestClient, db: S
     assert pv["sample_rows"][1]["Test Date"] == "2026-10-05"
     assert pv["suggested_mapping"].get("Jump Height (cm)") == "jump_height_cm"
     assert pv["suggested_mapping"].get("Body Mass") == "body_mass_kg"
-    mapping = {"Jump Height (cm)": "jump_height_cm", "RSI mod": "rsi_mod", "Body Mass": "body_mass_kg",
-               "Peak Power": "peak_power_w"}
+    mapping = {
+        "Jump Height (cm)": "jump_height_cm",
+        "RSI mod": "rsi_mod",
+        "Body Mass": "body_mass_kg",
+        "Peak Power": "peak_power_w",
+    }
     url = f"{API}/orgs/{org.id}/forms/{form.id}/imports"
     for column, mode in (("Athlete", "name"), ("Email", "email"), ("Ext", "external_id")):
         r = client.post(
             url,
             headers=admin.headers,
-            json={"upload_id": pv["upload_id"], "mapping": mapping, "athlete_column": column, "athlete_match": mode,
-                  "date_column": "Test Date", "dry_run": True},
+            json={
+                "upload_id": pv["upload_id"],
+                "mapping": mapping,
+                "athlete_column": column,
+                "athlete_match": mode,
+                "date_column": "Test Date",
+                "dry_run": True,
+            },
         )
         assert r.status_code == 201, r.text
         assert r.json()["created_count"] == 2, (mode, r.json()["errors"])
@@ -143,8 +154,13 @@ def test_xlsx_with_name_email_and_external_id_matching(client: TestClient, db: S
     r = client.post(
         url,
         headers=admin.headers,
-        json={"upload_id": pv["upload_id"], "mapping": mapping, "athlete_column": "Athlete", "athlete_match": "name",
-              "date_column": "Test Date"},
+        json={
+            "upload_id": pv["upload_id"],
+            "mapping": mapping,
+            "athlete_column": "Athlete",
+            "athlete_match": "name",
+            "date_column": "Test Date",
+        },
     )
     subs = db.scalars(select(Submission).order_by(Submission.observed_at)).all()
     assert len(subs) == 2
@@ -166,9 +182,13 @@ def test_import_matching_respects_masking_and_scope(client: TestClient, db: Sess
     pv = preview(client, org.id, form.id, blinded.headers, "m.csv", csv_bytes)
     url = f"{API}/orgs/{org.id}/forms/{form.id}/imports"
     base = {"upload_id": pv["upload_id"], "mapping": {"value": "value"}, "date_column": "date", "dry_run": True}
-    by_code = client.post(url, headers=blinded.headers, json={**base, "athlete_column": "code", "athlete_match": "code"})
+    by_code = client.post(
+        url, headers=blinded.headers, json={**base, "athlete_column": "code", "athlete_match": "code"}
+    )
     assert by_code.json()["created_count"] == 1  # S-2 is outside the researcher's scope
-    by_email = client.post(url, headers=blinded.headers, json={**base, "athlete_column": "email", "athlete_match": "email"})
+    by_email = client.post(
+        url, headers=blinded.headers, json={**base, "athlete_column": "email", "athlete_match": "email"}
+    )
     assert by_email.json()["created_count"] == 0  # emails are masked for this researcher: no matching on them
 
 
@@ -182,17 +202,38 @@ def test_import_requests_validation(client: TestClient, db: Session) -> None:
     url = f"{API}/orgs/{org.id}/forms/{form.id}/imports"
     bad = client.post(f"{url}/preview", headers=admin.headers, files={"file": ("x.txt", b"a,b\n1,2\n", "text/plain")})
     assert bad.status_code == 400
-    assert client.post(f"{url}/preview", headers=viewer.headers, files={"file": ("x.csv", b"a\n1\n", "text/csv")}).status_code == 403
+    assert (
+        client.post(
+            f"{url}/preview", headers=viewer.headers, files={"file": ("x.csv", b"a\n1\n", "text/csv")}
+        ).status_code
+        == 403
+    )
     pv = preview(client, org.id, form.id, admin.headers, "x.csv", b"code;value\nA;1\n")  # semicolon dialect
     assert pv["columns"] == ["code", "value"]
-    body = {"upload_id": pv["upload_id"], "mapping": {"value": "value"}, "athlete_column": "code", "athlete_match": "code"}
+    body = {
+        "upload_id": pv["upload_id"],
+        "mapping": {"value": "value"},
+        "athlete_column": "code",
+        "athlete_match": "code",
+    }
     assert client.post(url, headers=admin.headers, json=body).status_code == 400  # no date column nor default
-    assert client.post(url, headers=admin.headers, json={**body, "mapping": {"nope": "value"},
-                                                          "default_date": "2026-10-01"}).status_code == 400
-    assert client.post(url, headers=admin.headers, json={**body, "mapping": {"value": "missing"},
-                                                          "default_date": "2026-10-01"}).status_code == 400
-    r = client.post(url, headers=admin.headers, json={**body, "default_date": "2026-10-01",
-                                                      "upload_id": "00000000-0000-0000-0000-000000000000"})
+    assert (
+        client.post(
+            url, headers=admin.headers, json={**body, "mapping": {"nope": "value"}, "default_date": "2026-10-01"}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            url, headers=admin.headers, json={**body, "mapping": {"value": "missing"}, "default_date": "2026-10-01"}
+        ).status_code
+        == 400
+    )
+    r = client.post(
+        url,
+        headers=admin.headers,
+        json={**body, "default_date": "2026-10-01", "upload_id": "00000000-0000-0000-0000-000000000000"},
+    )
     assert r.status_code == 404
     r = client.post(url, headers=admin.headers, json={**body, "default_date": "2026-10-01", "date_format": "%d/%m/%Y"})
     assert r.status_code == 201 and r.json()["errors"][0]["message"].endswith("no athlete matches 'A'")

@@ -33,9 +33,7 @@ router = APIRouter(prefix="/orgs/{org_id}", tags=["groups"])
 
 
 @router.get("/groups", response_model=list[GroupOut])
-def list_groups(
-    p: PrincipalDep, db: DbSession, include_archived: Annotated[bool, Query()] = False
-) -> list[GroupOut]:
+def list_groups(p: PrincipalDep, db: DbSession, include_archived: Annotated[bool, Query()] = False) -> list[GroupOut]:
     q = select(Group).where(Group.org_id == p.org_id)
     if not include_archived:
         q = q.where(Group.archived.is_(False))
@@ -63,7 +61,12 @@ def create_group(body: GroupCreate, p: AdminDep, db: DbSession) -> GroupOut:
     db.add(group)
     db.flush()
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="group.create", entity_type="group", entity_id=group.id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="group.create",
+        entity_type="group",
+        entity_id=group.id,
         details={"name": group.name, "parent_id": group.parent_id},
     )
     db.commit()
@@ -90,7 +93,12 @@ def update_group(group_id: uuid.UUID, body: GroupUpdate, p: AdminDep, db: DbSess
     for key, value in fields.items():
         setattr(group, key, value)
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="group.update", entity_type="group", entity_id=group.id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="group.update",
+        entity_type="group",
+        entity_id=group.id,
         details=audit.diff(before, fields),
     )
     db.commit()
@@ -122,7 +130,12 @@ def add_group_athletes(group_id: uuid.UUID, body: GroupAthletesAdd, p: Principal
     joined_on = body.joined_on or p.today
     added = [aid for aid in ids if add_to_group(db, p.org_id, aid, group.id, joined_on)]
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="group.athletes_add", entity_type="group", entity_id=group.id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="group.athletes_add",
+        entity_type="group",
+        entity_id=group.id,
         details={"athlete_ids": added, "joined_on": joined_on},
     )
     db.commit()
@@ -147,8 +160,13 @@ def remove_group_athlete(
     if not leave_group(db, athlete_id, group.id, day):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="athlete is not a current member of the group")
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="group.athlete_remove", entity_type="athlete",
-        entity_id=athlete_id, details={"group_id": group.id, "left_on": day},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="group.athlete_remove",
+        entity_type="athlete",
+        entity_id=athlete_id,
+        details={"group_id": group.id, "left_on": day},
     )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -163,9 +181,7 @@ def list_group_staff(group_id: uuid.UUID, p: AdminDep, db: DbSession) -> list[St
     return [StaffAssignmentOut.model_validate(a) for a in rows]
 
 
-@router.post(
-    "/groups/{group_id}/staff", response_model=StaffAssignmentOut, status_code=status.HTTP_201_CREATED
-)
+@router.post("/groups/{group_id}/staff", response_model=StaffAssignmentOut, status_code=status.HTTP_201_CREATED)
 def assign_staff(group_id: uuid.UUID, body: StaffAssignmentCreate, p: AdminDep, db: DbSession) -> StaffAssignmentOut:
     group = get_group_or_404(db, p, group_id)
     m = db.scalar(select(OrgMembership).where(OrgMembership.org_id == p.org_id, OrgMembership.user_id == body.user_id))
@@ -183,8 +199,13 @@ def assign_staff(group_id: uuid.UUID, body: StaffAssignmentCreate, p: AdminDep, 
     a.can_view_identifiable = body.can_view_identifiable
     db.flush()
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="staff_assignment.upsert", entity_type="staff_assignment",
-        entity_id=a.id, details=body.model_dump() | {"group_id": group.id},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="staff_assignment.upsert",
+        entity_type="staff_assignment",
+        entity_id=a.id,
+        details=body.model_dump() | {"group_id": group.id},
     )
     db.commit()
     return StaffAssignmentOut.model_validate(a)
@@ -197,7 +218,11 @@ def delete_assignment(assignment_id: uuid.UUID, p: AdminDep, db: DbSession) -> R
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="assignment not found")
     db.delete(a)
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="staff_assignment.delete", entity_type="staff_assignment",
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="staff_assignment.delete",
+        entity_type="staff_assignment",
         entity_id=assignment_id,
     )
     db.commit()

@@ -57,9 +57,7 @@ def me_athlete(p: AthleteSelfDep, db: DbSession) -> AthleteOut:
 
 
 @router.get("/forms", response_model=list[DueForm])
-def me_forms(
-    p: AthleteSelfDep, db: DbSession, date: Annotated[dt.date | None, Query()] = None
-) -> list[DueForm]:
+def me_forms(p: AthleteSelfDep, db: DbSession, date: Annotated[dt.date | None, Query()] = None) -> list[DueForm]:
     athlete = _self(db, p)
     day = date or _athlete_today(p, athlete)
     forms = list(
@@ -206,10 +204,10 @@ def me_connect(body: ConnectRequest, p: AthleteSelfDep, db: DbSession) -> Connec
 @router.post("/wearables/sdk-token", response_model=SdkTokenResponse)
 def me_sdk_token(p: AthleteSelfDep, db: DbSession) -> SdkTokenResponse:
     from app.config import settings
-    from app.integrations.open_wearables.errors import OpenWearablesNotConfigured
+    from app.integrations.open_wearables.errors import OpenWearablesNotConfiguredError
 
     if not settings.ow_sdk_configured:
-        raise OpenWearablesNotConfigured("OW_APP_ID / OW_APP_SECRET are not configured")
+        raise OpenWearablesNotConfiguredError("OW_APP_ID / OW_APP_SECRET are not configured")
     athlete = _self(db, p)
     with OpenWearablesClient.from_settings() as client:
         token = wsvc.sdk_token(db, client, athlete)

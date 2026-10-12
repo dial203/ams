@@ -422,7 +422,8 @@ CMJ_TEST = FormTemplate(
                         "key": "rsi_mod_calc",
                         "type": "calculated",
                         "label": "RSI-modified (reported or calculated)",
-                        "expression": "coalesce(rsi_mod, round((jump_height_cm / 100) / (time_to_takeoff_ms / 1000), 2))",
+                        "expression": "coalesce(rsi_mod, "
+                        "round((jump_height_cm / 100) / (time_to_takeoff_ms / 1000), 2))",
                         "unit": "m/s",
                     },
                     {"key": "trials", "type": "number", "label": "Trials", "min": 1, "max": 10, "step": 1},
@@ -489,8 +490,22 @@ GPS_SESSION = FormTemplate(
                         "decimals": 0,
                         "unit": "m",
                     },
-                    {"key": "accelerations", "type": "number", "label": "Accelerations", "min": 0, "max": 1000, "step": 1},
-                    {"key": "decelerations", "type": "number", "label": "Decelerations", "min": 0, "max": 1000, "step": 1},
+                    {
+                        "key": "accelerations",
+                        "type": "number",
+                        "label": "Accelerations",
+                        "min": 0,
+                        "max": 1000,
+                        "step": 1,
+                    },
+                    {
+                        "key": "decelerations",
+                        "type": "number",
+                        "label": "Decelerations",
+                        "min": 0,
+                        "max": 1000,
+                        "step": 1,
+                    },
                     {
                         "key": "player_load",
                         "type": "number",
@@ -535,8 +550,7 @@ GPS_SESSION = FormTemplate(
 BODY_MASS = FormTemplate(
     key="body_mass",
     name="Morning body mass",
-    description="Morning body mass (after voiding, before breakfast) and urine specific gravity as a hydration "
-    "marker.",
+    description="Morning body mass (after voiding, before breakfast) and urine specific gravity as a hydration marker.",
     kind="test",
     sensitivity="general",
     athlete_can_submit=True,

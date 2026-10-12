@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Athlete, Invitation, OrgMembership, Organization, RefreshToken, User
+from app.models import Athlete, Invitation, Organization, OrgMembership, RefreshToken, User
 from app.schemas.identity import InvitationOut, TokenPair
 from app.security import (
     create_access_token,

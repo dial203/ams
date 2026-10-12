@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-class OpenWearablesNotConfigured(Exception):
+class OpenWearablesNotConfiguredError(Exception):
     """OW (or the part of it a call needs) is not configured. The API answers 503."""
 
 
@@ -13,5 +13,5 @@ class OpenWearablesError(Exception):
         self.status_code = status_code
 
 
-class OpenWearablesConflict(OpenWearablesError):
+class OpenWearablesConflictError(OpenWearablesError):
     """OW answered 409 (e.g. a user with this email already exists)."""

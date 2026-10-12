@@ -141,9 +141,9 @@ def zscore(
     smooth: int = 1,
     ln: bool = False,
 ) -> pd.Series:
-    """(x̄_smooth − mean_baseline) / sd_baseline using same-source days only.
+    """(mean_smooth - mean_baseline) / sd_baseline using same-source days only.
 
-    x̄_smooth: mean of the (ln) values over the ``smooth`` days ending today (needs ceil(0.7·smooth)
+    mean_smooth: mean of the (ln) values over the ``smooth`` days ending today (needs ceil(0.7*smooth)
     same-source values, and today's value). Baseline: the ``baseline`` days before today (excluding
     today), same source as today, at least ``min_periods`` values; sample SD (ddof=1); SD 0 -> null.
     A device change therefore restarts the baseline instead of producing a spurious deviation.
@@ -168,10 +168,8 @@ def zscore(
     return pd.Series(out, index=x.index)
 
 
-def pct_change(
-    x: pd.Series, sources: pd.Series | None = None, baseline: int = 28, min_periods: int = 14
-) -> pd.Series:
-    """100 × (x − mean_baseline) / mean_baseline, baseline as in :func:`zscore` (same source, excl. today)."""
+def pct_change(x: pd.Series, sources: pd.Series | None = None, baseline: int = 28, min_periods: int = 14) -> pd.Series:
+    """100 x (x - mean_baseline) / mean_baseline, baseline as in :func:`zscore` (same source, excl. today)."""
     y = x.to_numpy(dtype=float)
     src = list(sources) if sources is not None else [None] * len(y)
     out = np.full(len(y), np.nan)
@@ -196,7 +194,7 @@ def monotony(x: pd.Series, window: int = 7, min_periods: int | None = None) -> p
 
 
 def strain(x: pd.Series, window: int = 7, min_periods: int | None = None) -> pd.Series:
-    """Weekly load sum × monotony (Foster 1998)."""
+    """Weekly load sum x monotony (Foster 1998)."""
     mp = min_periods if min_periods is not None else window
     total = x.rolling(window, min_periods=min(mp, window)).sum()
     return total * monotony(x, window, min_periods)

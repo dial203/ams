@@ -80,7 +80,12 @@ def create_form(body: FormCreate, p: AdminDep, db: DbSession) -> FormOut:
     db.add(form)
     db.flush()
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="form.create", entity_type="form", entity_id=form.id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="form.create",
+        entity_type="form",
+        entity_id=form.id,
         details={"after": form_snapshot(form)},
     )
     db.commit()
@@ -104,8 +109,17 @@ def get_form(form_id: uuid.UUID, p: PrincipalDep, db: DbSession) -> FormOut:
 def update_form(form_id: uuid.UUID, body: FormUpdate, p: AdminDep, db: DbSession) -> FormOut:
     form = get_form_or_404(db, p, form_id)
     fields = body.model_dump(exclude_unset=True)
-    for key in ("name", "slug", "kind", "sensitivity", "athlete_can_submit", "athlete_can_view",
-                "allow_multiple_per_day", "archived", "draft_schema"):
+    for key in (
+        "name",
+        "slug",
+        "kind",
+        "sensitivity",
+        "athlete_can_submit",
+        "athlete_can_view",
+        "allow_multiple_per_day",
+        "archived",
+        "draft_schema",
+    ):
         if key in fields and fields[key] is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"{key} cannot be null")
     if "slug" in fields and slug_taken(db, p.org_id, fields["slug"], exclude=form.id):
@@ -115,7 +129,12 @@ def update_form(form_id: uuid.UUID, body: FormUpdate, p: AdminDep, db: DbSession
     for key, value in fields.items():
         setattr(form, key, value)
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="form.update", entity_type="form", entity_id=form.id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="form.update",
+        entity_type="form",
+        entity_id=form.id,
         details=audit.diff(before, form_snapshot(form)) | {"draft_schema_changed": draft_changed},
     )
     db.commit()
@@ -190,8 +209,13 @@ def create_schedule(form_id: uuid.UUID, body: FormScheduleCreate, p: AdminDep, d
     db.add(s)
     db.flush()
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="schedule.create", entity_type="form_schedule",
-        entity_id=s.id, details=body.model_dump() | {"form_id": form.id},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="schedule.create",
+        entity_type="form_schedule",
+        entity_id=s.id,
+        details=body.model_dump() | {"form_id": form.id},
     )
     db.commit()
     return schedule_out(s)
@@ -205,9 +229,7 @@ def _get_schedule(db: DbSession, org_id: uuid.UUID, schedule_id: uuid.UUID) -> F
 
 
 @router.patch("/form-schedules/{schedule_id}", response_model=FormScheduleOut)
-def update_schedule(
-    schedule_id: uuid.UUID, body: FormScheduleUpdate, p: AdminDep, db: DbSession
-) -> FormScheduleOut:
+def update_schedule(schedule_id: uuid.UUID, body: FormScheduleUpdate, p: AdminDep, db: DbSession) -> FormScheduleOut:
     s = _get_schedule(db, p.org_id, schedule_id)
     fields = body.model_dump(exclude_unset=True)
     for key in ("group_id", "recurrence", "days_of_week", "due_time", "start_date", "remind", "active"):
@@ -222,8 +244,13 @@ def update_schedule(
     if s.end_date is not None and s.end_date < s.start_date:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="end_date must not be before start_date")
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="schedule.update", entity_type="form_schedule",
-        entity_id=s.id, details=audit.jsonable(fields),
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="schedule.update",
+        entity_type="form_schedule",
+        entity_id=s.id,
+        details=audit.jsonable(fields),
     )
     db.commit()
     return schedule_out(s)
@@ -234,7 +261,11 @@ def delete_schedule(schedule_id: uuid.UUID, p: AdminDep, db: DbSession) -> Respo
     s = _get_schedule(db, p.org_id, schedule_id)
     db.delete(s)
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="schedule.delete", entity_type="form_schedule",
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="schedule.delete",
+        entity_type="form_schedule",
         entity_id=schedule_id,
     )
     db.commit()

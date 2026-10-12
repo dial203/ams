@@ -21,8 +21,8 @@ from app.connectors import REGISTRY, ConnectorError, Table
 from app.forms.schema import FieldInfo, index_schema
 from app.models import Athlete, Form, ImportBatch, ImportUpload
 from app.permissions import AthleteRights, Principal
-from app.schemas.domain import ImportBatchOut, ImportCommit, ImportError_, ImportPreview
-from app.services.submissions import DuplicateSubmission, SubmissionInvalid, create_submission
+from app.schemas.domain import ImportBatchOut, ImportCommit, ImportPreview, ImportRowError
+from app.services.submissions import DuplicateSubmissionError, SubmissionInvalidError, create_submission
 from app.timeutil import local_date as to_local_date
 from app.timeutil import local_noon, utcnow, zone
 
@@ -59,7 +59,7 @@ def batch_out(b: ImportBatch) -> ImportBatchOut:
         row_count=b.row_count,
         created_count=b.created_count,
         skipped_count=b.skipped_count,
-        errors=[ImportError_(**e) for e in (b.errors or [])],
+        errors=[ImportRowError(**e) for e in (b.errors or [])],
         dry_run=b.dry_run,
     )
 
@@ -169,7 +169,7 @@ _FALSE = {"false", "f", "no", "n", "0"}
 
 
 def parse_number(text: str) -> float | int:
-    t = text.strip().replace(" ", "").replace(" ", "")
+    t = text.strip().replace("\u00a0", "").replace(" ", "")
     if re.fullmatch(r"-?\d+,\d+", t):
         t = t.replace(",", ".")
     try:
@@ -379,11 +379,11 @@ def commit(db: Session, p: Principal, form: Form, body: ImportCommit) -> ImportB
                     pending_days=pending,
                     dry_run=body.dry_run,
                 )
-        except SubmissionInvalid as exc:
+        except SubmissionInvalidError as exc:
             detail = ", ".join(f"{k}: {v}" for k, v in exc.field_errors.items())
             errors.append({"row": i, "message": f"invalid values ({detail})"})
             continue
-        except DuplicateSubmission:
+        except DuplicateSubmissionError:
             errors.append({"row": i, "message": f"athlete {athlete.code} already has a submission on {day}"})
             continue
         created += 1

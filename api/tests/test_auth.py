@@ -110,16 +110,21 @@ def test_staff_invitation_flow(client: TestClient, db: Session) -> None:
     }
     expires = dt.datetime.fromisoformat(info["expires_at"])
     assert dt.timedelta(days=6, hours=23) < expires - dt.datetime.now(dt.UTC) <= dt.timedelta(days=7)
-    acc = client.post(f"{API}/auth/accept-invite", json={"token": token, "password": "new-password-1", "full_name": "C"})
+    acc = client.post(
+        f"{API}/auth/accept-invite", json={"token": token, "password": "new-password-1", "full_name": "C"}
+    )
     assert acc.status_code == 200, acc.text
     assert acc.json()["user"]["email"] == "coach@example.com"
     me = client.get(f"{API}/me", headers={"Authorization": f"Bearer {acc.json()['access_token']}"}).json()
     assert me["memberships"][0]["role"] == "staff"
     # token cannot be reused, and is no longer pending
     assert client.get(f"{API}/auth/invite/{token}").status_code == 404
-    assert client.post(
-        f"{API}/auth/accept-invite", json={"token": token, "password": "new-password-1", "full_name": "C"}
-    ).status_code == 404
+    assert (
+        client.post(
+            f"{API}/auth/accept-invite", json={"token": token, "password": "new-password-1", "full_name": "C"}
+        ).status_code
+        == 404
+    )
     assert client.get(f"{API}/orgs/{org.id}/invitations", headers=admin.headers).json() == []
 
 
@@ -148,13 +153,19 @@ def test_athlete_invitation_links_athlete(client: TestClient, db: Session) -> No
 def test_invitation_validation(client: TestClient, db: Session) -> None:
     org = f.org(db)
     admin = f.member(db, org, "admin")
-    r = client.post(f"{API}/orgs/{org.id}/invitations", headers=admin.headers, json={"email": "x@e.com", "role": "athlete"})
+    r = client.post(
+        f"{API}/orgs/{org.id}/invitations", headers=admin.headers, json={"email": "x@e.com", "role": "athlete"}
+    )
     assert r.status_code == 422
     # only owners invite owners
-    r = client.post(f"{API}/orgs/{org.id}/invitations", headers=admin.headers, json={"email": "x@e.com", "role": "owner"})
+    r = client.post(
+        f"{API}/orgs/{org.id}/invitations", headers=admin.headers, json={"email": "x@e.com", "role": "owner"}
+    )
     assert r.status_code == 403
     staff = f.member(db, org, "staff")
-    r = client.post(f"{API}/orgs/{org.id}/invitations", headers=staff.headers, json={"email": "x@e.com", "role": "staff"})
+    r = client.post(
+        f"{API}/orgs/{org.id}/invitations", headers=staff.headers, json={"email": "x@e.com", "role": "staff"}
+    )
     assert r.status_code == 403
 
 
@@ -164,10 +175,14 @@ def test_existing_user_must_prove_password_to_accept(client: TestClient, db: Ses
     f.member(db, org_a, "staff", email="multi@example.com")
     admin_b = f.member(db, org_b, "admin")
     inv = client.post(
-        f"{API}/orgs/{org_b.id}/invitations", headers=admin_b.headers, json={"email": "multi@example.com", "role": "staff"}
+        f"{API}/orgs/{org_b.id}/invitations",
+        headers=admin_b.headers,
+        json={"email": "multi@example.com", "role": "staff"},
     ).json()
     token = _token(inv["invite_url"])
-    bad = client.post(f"{API}/auth/accept-invite", json={"token": token, "password": "wrong-password", "full_name": "M"})
+    bad = client.post(
+        f"{API}/auth/accept-invite", json={"token": token, "password": "wrong-password", "full_name": "M"}
+    )
     assert bad.status_code == 401
     ok = client.post(f"{API}/auth/accept-invite", json={"token": token, "password": f.PASSWORD, "full_name": "M"})
     assert ok.status_code == 200
@@ -207,7 +222,10 @@ def test_push_tokens(client: TestClient, db: Session) -> None:
     me = f.member(db, org, "athlete")
     body = {"token": "ExponentPushToken[abc]", "platform": "ios"}
     assert client.post(f"{API}/me/push-tokens", headers=me.headers, json=body).status_code == 204
-    assert client.post(f"{API}/me/push-tokens", headers=me.headers, json={**body, "platform": "android"}).status_code == 204
+    assert (
+        client.post(f"{API}/me/push-tokens", headers=me.headers, json={**body, "platform": "android"}).status_code
+        == 204
+    )
     tokens = db.scalars(select(PushToken)).all()
     assert len(tokens) == 1 and tokens[0].platform == "android"
     assert client.delete(f"{API}/me/push-tokens/ExponentPushToken[abc]", headers=me.headers).status_code == 204

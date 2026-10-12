@@ -11,7 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Athlete, OrgMembership, Organization, StaffAssignment, User
+from app.models import Athlete, Organization, OrgMembership, StaffAssignment, User
 from app.schemas.identity import MemberOut, OrganizationOut, OrgSettings, StaffAssignmentOut, Terminology, UserOut
 from app.security import hash_password
 from app.timeutil import is_valid_timezone
@@ -97,9 +97,7 @@ def create_user(db: Session, email: str, password: str | None, full_name: str) -
 
 
 def add_member(db: Session, org: Organization, user: User, role: str) -> OrgMembership:
-    existing = db.scalar(
-        select(OrgMembership).where(OrgMembership.org_id == org.id, OrgMembership.user_id == user.id)
-    )
+    existing = db.scalar(select(OrgMembership).where(OrgMembership.org_id == org.id, OrgMembership.user_id == user.id))
     if existing is not None:
         existing.role = role
         return existing
@@ -111,10 +109,7 @@ def add_member(db: Session, org: Organization, user: User, role: str) -> OrgMemb
 
 def owner_count(db: Session, org_id: uuid.UUID) -> int:
     return int(
-        db.scalar(
-            select(func.count()).where(OrgMembership.org_id == org_id, OrgMembership.role == "owner")
-        )
-        or 0
+        db.scalar(select(func.count()).where(OrgMembership.org_id == org_id, OrgMembership.role == "owner")) or 0
     )
 
 

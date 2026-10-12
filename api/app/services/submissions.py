@@ -27,7 +27,7 @@ from app.timeutil import utcnow
 SENSITIVE = frozenset({"medical", "research"})
 
 
-class SubmissionInvalid(Exception):
+class SubmissionInvalidError(Exception):
     def __init__(self, field_errors: dict[str, str]) -> None:
         super().__init__("invalid submission")
         self.field_errors = field_errors
@@ -39,14 +39,14 @@ class SubmissionInvalid(Exception):
         )
 
 
-class DuplicateSubmission(Exception):
+class DuplicateSubmissionError(Exception):
     def http(self) -> HTTPException:
         return HTTPException(
             status.HTTP_409_CONFLICT, detail="a submission for this form already exists for that local_date"
         )
 
 
-class FormNotPublished(Exception):
+class FormNotPublishedError(Exception):
     def http(self) -> HTTPException:
         return HTTPException(status.HTTP_409_CONFLICT, detail="form has no published version")
 
@@ -119,6 +119,7 @@ def create_submission(
     import_batch_id: uuid.UUID | None = None,
     pending_days: set[tuple[uuid.UUID, dt.date]] | None = None,
     dry_run: bool = False,
+    record_audit: bool = True,
 ) -> Submission:
     """Validate with the form's current version and store. The server recomputes calculated fields.
 
@@ -128,10 +129,10 @@ def create_submission(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="form is archived")
     version = form.current_version
     if version is None:
-        raise FormNotPublished()
+        raise FormNotPublishedError()
     result = validate(version.schema, values)
     if not result.ok:
-        raise SubmissionInvalid(result.errors)
+        raise SubmissionInvalidError(result.errors)
     observed = observed_at or utcnow()
     if observed.tzinfo is None:
         observed = observed.replace(tzinfo=dt.UTC)
@@ -139,7 +140,7 @@ def create_submission(
     if not form.allow_multiple_per_day:
         key = (athlete.id, day)
         if has_submission_on(db, form.id, athlete.id, day) or (pending_days is not None and key in pending_days):
-            raise DuplicateSubmission()
+            raise DuplicateSubmissionError()
         if pending_days is not None:
             pending_days.add(key)
     sub = Submission(
@@ -161,6 +162,8 @@ def create_submission(
         return sub
     db.add(sub)
     db.flush()
+    if not record_audit:  # only for generated demo data
+        return sub
     audit.record(
         db,
         org_id=org.id,
@@ -192,7 +195,7 @@ def update_submission(
     if values is not None:
         result = validate(version.schema, values)
         if not result.ok:
-            raise SubmissionInvalid(result.errors)
+            raise SubmissionInvalidError(result.errors)
         sub.values = result.values
         sub.computed = result.computed
     if observed_at is not None:
@@ -206,7 +209,7 @@ def update_submission(
         and sub.local_date != before["local_date"]
         and has_submission_on(db, form.id, athlete.id, sub.local_date, exclude=sub.id)
     ):
-        raise DuplicateSubmission()
+        raise DuplicateSubmissionError()
     sub.updated_at = utcnow()
     audit.record(
         db,
@@ -258,10 +261,10 @@ def export_columns(versions: Sequence[FormVersion], rows: Sequence[Submission]) 
             if c.key not in calcs:
                 calcs.append(c.key)
     for s in rows:
-        for k in (s.values or {}):
+        for k in s.values or {}:
             if k not in fields and k not in calcs:
                 fields.append(k)
-        for k in (s.computed or {}):
+        for k in s.computed or {}:
             if k not in calcs and k not in fields:
                 calcs.append(k)
     return fields, calcs

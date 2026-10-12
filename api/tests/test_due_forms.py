@@ -29,9 +29,20 @@ def setup_athlete(db: Session, tz: str = "UTC") -> tuple:
 
 
 def schedule(db: Session, org: object, form: object, group: object, **kw: object) -> FormSchedule:
-    s = FormSchedule(org_id=org.id, form_id=form.id, group_id=group.id,  # type: ignore[attr-defined]
-                     **{"recurrence": "daily", "days_of_week": [], "due_time": "08:00",
-                        "start_date": dt.date(2026, 1, 1), "remind": False, "active": True, **kw})
+    s = FormSchedule(
+        org_id=org.id,
+        form_id=form.id,
+        group_id=group.id,  # type: ignore[attr-defined]
+        **{
+            "recurrence": "daily",
+            "days_of_week": [],
+            "due_time": "08:00",
+            "start_date": dt.date(2026, 1, 1),
+            "remind": False,
+            "active": True,
+            **kw,
+        },
+    )
     db.add(s)
     db.commit()
     return s
@@ -57,12 +68,20 @@ def test_me_forms_due_status(client: TestClient, db: Session) -> None:
     tuesday = "2026-10-13"
     forms = client.get(url, headers=me.headers, params={"date": tuesday}).json()
     assert [(x["form"]["slug"], x["due_time"]) for x in forms] == [
-        ("wellness_hooper", "07:30"), ("body_mass", None), ("session_rpe", None)
+        ("wellness_hooper", "07:30"),
+        ("body_mass", None),
+        ("session_rpe", None),
     ]
     # submit through the self-service endpoint (source mobile) and the day is completed
-    r = client.post(f"{API}/orgs/{org.id}/me/submissions", headers=me.headers, json={
-        "form_id": str(wellness.id), "local_date": monday,
-        "values": {"sleep_quality": 3, "fatigue": 3, "stress": 3, "soreness": 3, "has_pain": False}})
+    r = client.post(
+        f"{API}/orgs/{org.id}/me/submissions",
+        headers=me.headers,
+        json={
+            "form_id": str(wellness.id),
+            "local_date": monday,
+            "values": {"sleep_quality": 3, "fatigue": 3, "stress": 3, "soreness": 3, "has_pain": False},
+        },
+    )
     assert r.status_code == 201, r.text
     assert r.json()["source"] == "mobile" and r.json()["athlete_id"] == str(a.id)
     forms = client.get(url, headers=me.headers, params={"date": monday}).json()
@@ -81,34 +100,50 @@ def test_me_forms_due_status(client: TestClient, db: Session) -> None:
 
 
 def test_me_submission_rules(client: TestClient, db: Session) -> None:
-    org, team, squad, me, a = setup_athlete(db)
+    org, _team, _squad, me, a = setup_athlete(db)
     injury = f.template_form(db, org, "injury_report")
     cmj = f.template_form(db, org, "cmj_test")  # view only
-    r = client.post(f"{API}/orgs/{org.id}/me/submissions", headers=me.headers,
-                    json={"form_id": str(injury.id), "values": {}})
+    r = client.post(
+        f"{API}/orgs/{org.id}/me/submissions", headers=me.headers, json={"form_id": str(injury.id), "values": {}}
+    )
     assert r.status_code == 404
-    r = client.post(f"{API}/orgs/{org.id}/me/submissions", headers=me.headers,
-                    json={"form_id": str(cmj.id), "values": {"jump_height_cm": 30, "body_mass_kg": 70}})
+    r = client.post(
+        f"{API}/orgs/{org.id}/me/submissions",
+        headers=me.headers,
+        json={"form_id": str(cmj.id), "values": {"jump_height_cm": 30, "body_mass_kg": 70}},
+    )
     assert r.status_code == 404
     # staff can record a CMJ the athlete can then view
     admin = f.member(db, org, "admin")
-    client.post(f"{API}/orgs/{org.id}/submissions", headers=admin.headers, json={
-        "form_id": str(cmj.id), "athlete_id": str(a.id), "values": {"jump_height_cm": 30, "body_mass_kg": 70}})
-    client.post(f"{API}/orgs/{org.id}/submissions", headers=admin.headers, json={
-        "form_id": str(injury.id), "athlete_id": str(a.id),
-        "values": {"onset_date": "2026-10-01", "problem_type": "illness", "availability": "full"}})
+    client.post(
+        f"{API}/orgs/{org.id}/submissions",
+        headers=admin.headers,
+        json={"form_id": str(cmj.id), "athlete_id": str(a.id), "values": {"jump_height_cm": 30, "body_mass_kg": 70}},
+    )
+    client.post(
+        f"{API}/orgs/{org.id}/submissions",
+        headers=admin.headers,
+        json={
+            "form_id": str(injury.id),
+            "athlete_id": str(a.id),
+            "values": {"onset_date": "2026-10-01", "problem_type": "illness", "availability": "full"},
+        },
+    )
     mine = client.get(f"{API}/orgs/{org.id}/me/submissions", headers=me.headers).json()
     assert [s["form_id"] for s in mine["items"]] == [str(cmj.id)]
     assert mine["items"][0]["athlete_display_name"] == "Ath Lete"
 
 
 def test_me_metrics(client: TestClient, db: Session) -> None:
-    org, team, squad, me, a = setup_athlete(db)
+    org, _team, _squad, me, a = setup_athlete(db)
     wellness = f.template_form(db, org, "wellness_hooper")
     day = dt.date(2026, 10, 5)
-    f.submit(db, org, wellness, a, {"sleep_quality": 5, "fatigue": 5, "stress": 5, "soreness": 5, "has_pain": False}, day)
-    r = client.get(f"{API}/orgs/{org.id}/me/metrics", headers=me.headers,
-                   params={"start": "2026-10-04", "end": "2026-10-06"})
+    f.submit(
+        db, org, wellness, a, {"sleep_quality": 5, "fatigue": 5, "stress": 5, "soreness": 5, "has_pain": False}, day
+    )
+    r = client.get(
+        f"{API}/orgs/{org.id}/me/metrics", headers=me.headers, params={"start": "2026-10-04", "end": "2026-10-06"}
+    )
     assert r.status_code == 200
     by_slug = {m["metric"]["slug"]: m for m in r.json()}
     assert set(by_slug) == {"wellness_hooper", "srpe_load", "sleep_duration"}
@@ -116,13 +151,16 @@ def test_me_metrics(client: TestClient, db: Session) -> None:
     assert by_slug["wellness_hooper"]["points"][1]["flag"] == "amber"
     # athlete can read athlete_visible series directly, but not staff-only metrics
     url = f"{API}/orgs/{org.id}/metrics"
-    assert client.get(f"{url}/wellness_hooper/series", headers=me.headers, params={"athlete_id": str(a.id)}).status_code == 200
+    assert (
+        client.get(f"{url}/wellness_hooper/series", headers=me.headers, params={"athlete_id": str(a.id)}).status_code
+        == 200
+    )
     assert client.get(f"{url}/acwr/series", headers=me.headers, params={"athlete_id": str(a.id)}).status_code == 404
 
 
 @respx.mock
 def test_send_due_reminders_once_per_day(db: Session, monkeypatch: object) -> None:
-    org, team, squad, me, a = setup_athlete(db, tz="America/New_York")
+    org, team, _squad, me, a = setup_athlete(db, tz="America/New_York")
     wellness = f.template_form(db, org, "wellness_hooper")
     schedule(db, org, wellness, team, due_time="08:00", remind=True)
     db.add(PushToken(user_id=me.id, token="ExponentPushToken[ok]", platform="ios"))
@@ -130,10 +168,15 @@ def test_send_due_reminders_once_per_day(db: Session, monkeypatch: object) -> No
     db.commit()
     monkeypatch.setattr(settings, "expo_push_enabled", True)  # type: ignore[attr-defined]
     route = respx.post(settings.expo_push_url).mock(
-        return_value=httpx.Response(200, json={"data": [
-            {"status": "ok", "id": "1"},
-            {"status": "error", "message": "gone", "details": {"error": "DeviceNotRegistered"}},
-        ]})
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"status": "ok", "id": "1"},
+                    {"status": "error", "message": "gone", "details": {"error": "DeviceNotRegistered"}},
+                ]
+            },
+        )
     )
     # 06:30 New York (10:30Z): more than an hour before 08:00 -> nothing yet
     early = dt.datetime(2026, 10, 12, 10, 30, tzinfo=dt.UTC)
@@ -154,15 +197,21 @@ def test_send_due_reminders_once_per_day(db: Session, monkeypatch: object) -> No
     assert route.call_count == 1
     assert len(db.scalars(select(ReminderSent)).all()) == 1
     # completing the form prevents tomorrow's reminder
-    f.submit(db, org, wellness, a, {"sleep_quality": 3, "fatigue": 3, "stress": 3, "soreness": 3, "has_pain": False},
-             dt.date(2026, 10, 13))
+    f.submit(
+        db,
+        org,
+        wellness,
+        a,
+        {"sleep_quality": 3, "fatigue": 3, "stress": 3, "soreness": 3, "has_pain": False},
+        dt.date(2026, 10, 13),
+    )
     assert reminders.send_due_reminders(db, now + dt.timedelta(days=1)) == 0
     # the day after that: reminded again
     assert reminders.send_due_reminders(db, now + dt.timedelta(days=2)) == 1
 
 
 def test_reminders_disabled_or_not_requested(db: Session) -> None:
-    org, team, squad, me, a = setup_athlete(db)
+    org, team, _squad, _me, _a = setup_athlete(db)
     wellness = f.template_form(db, org, "wellness_hooper")
     schedule(db, org, wellness, team, due_time="08:00", remind=False)
     now = dt.datetime(2026, 10, 12, 9, 0, tzinfo=dt.UTC)

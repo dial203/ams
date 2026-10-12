@@ -31,22 +31,44 @@ def paths(schema: Any) -> set[str]:
         ({"key": "a", "type": "duration", "label": "A", "min": 10, "max": 1}, {"sections/0/fields/0/max"}),
         ({"key": "a", "type": "text", "label": "A", "max_length": 0}, {"sections/0/fields/0/max_length"}),
         ({"key": "a", "type": "date", "label": "A", "min": "2024-02-30"}, {"sections/0/fields/0/min"}),
-        ({"key": "a", "type": "date", "label": "A", "min": "2025-01-01", "max": "2024-01-01"},
-         {"sections/0/fields/0/max"}),
-        ({"key": "a", "type": "multiselect", "label": "A", "options": [{"value": "x", "label": "X"}],
-          "min_selected": 1.5}, {"sections/0/fields/0/min_selected"}),
-        ({"key": "a", "type": "multiselect", "label": "A", "options": [{"value": "x", "label": "X"}],
-          "min_selected": 3, "max_selected": 2}, {"sections/0/fields/0/max_selected"}),
+        (
+            {"key": "a", "type": "date", "label": "A", "min": "2025-01-01", "max": "2024-01-01"},
+            {"sections/0/fields/0/max"},
+        ),
+        (
+            {
+                "key": "a",
+                "type": "multiselect",
+                "label": "A",
+                "options": [{"value": "x", "label": "X"}],
+                "min_selected": 1.5,
+            },
+            {"sections/0/fields/0/min_selected"},
+        ),
+        (
+            {
+                "key": "a",
+                "type": "multiselect",
+                "label": "A",
+                "options": [{"value": "x", "label": "X"}],
+                "min_selected": 3,
+                "max_selected": 2,
+            },
+            {"sections/0/fields/0/max_selected"},
+        ),
         ({"key": "a", "type": "scale", "label": "A", "max": 5}, {"sections/0/fields/0/min"}),
-        ({"key": "a", "type": "scale", "label": "A", "min": 1, "max": 5, "display": "dial"},
-         {"sections/0/fields/0/display"}),
-        ({"key": "a", "type": "scale", "label": "A", "min": 1, "max": 5, "anchors": {"min": 1}},
-         {"sections/0/fields/0/anchors"}),
+        (
+            {"key": "a", "type": "scale", "label": "A", "min": 1, "max": 5, "display": "dial"},
+            {"sections/0/fields/0/display"},
+        ),
+        (
+            {"key": "a", "type": "scale", "label": "A", "min": 1, "max": 5, "anchors": {"min": 1}},
+            {"sections/0/fields/0/anchors"},
+        ),
         ({"key": "a", "type": "number", "label": ""}, set()),
         ({"key": "a", "type": "number", "label": 3}, {"sections/0/fields/0/label"}),
         ({"key": "a", "type": "number", "label": "A", "visible_if": ""}, {"sections/0/fields/0/visible_if"}),
-        ({"key": "c", "type": "calculated", "label": "C", "expression": "sum + 1"},
-         {"sections/0/fields/0/expression"}),
+        ({"key": "c", "type": "calculated", "label": "C", "expression": "sum + 1"}, {"sections/0/fields/0/expression"}),
     ],
 )
 def test_schema_validation_matches_ts(field: dict[str, Any], expected: set[str]) -> None:
@@ -61,8 +83,15 @@ def test_structural_paths_and_reserved_section_keys() -> None:
         "sections/0/fields/0"
     }
     # reserved words are allowed for section keys
-    assert paths({"schema_version": 1, "sections": [{"key": "sum", "title": "", "fields": [
-        {"key": "a", "type": "number", "label": "A"}]}]}) == set()
+    assert (
+        paths(
+            {
+                "schema_version": 1,
+                "sections": [{"key": "sum", "title": "", "fields": [{"key": "a", "type": "number", "label": "A"}]}],
+            }
+        )
+        == set()
+    )
 
 
 def test_bad_reference_still_joins_cycle_detection() -> None:
@@ -74,8 +103,9 @@ def test_bad_reference_still_joins_cycle_detection() -> None:
 
 
 def test_nan_and_infinity_are_invalid_type() -> None:
-    schema = schema_with({"key": "a", "type": "number", "label": "A"}, {"key": "b", "type": "scale", "label": "B",
-                                                                        "min": 1, "max": 5})
+    schema = schema_with(
+        {"key": "a", "type": "number", "label": "A"}, {"key": "b", "type": "scale", "label": "B", "min": 1, "max": 5}
+    )
     result = validate(schema, {"a": math.nan, "b": math.inf})
     assert result.errors == {"a": "invalid_type", "b": "invalid_type"}
 

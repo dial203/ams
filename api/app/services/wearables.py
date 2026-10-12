@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.integrations.open_wearables.client import OpenWearablesClient
 from app.integrations.open_wearables.daily import WEARABLE_METRICS, DailyPoint, build_daily_points
-from app.integrations.open_wearables.errors import OpenWearablesConflict, OpenWearablesNotConfigured
+from app.integrations.open_wearables.errors import OpenWearablesConflictError, OpenWearablesNotConfiguredError
 from app.models import Athlete, Organization, WearableDaily
 from app.schemas.domain import (
     SdkTokenResponse,
@@ -41,7 +41,7 @@ def link_athlete(db: Session, client: OpenWearablesClient, athlete: Athlete) -> 
                 last_name=athlete.last_name,
                 email=athlete.email,
             )
-        except OpenWearablesConflict:
+        except OpenWearablesConflictError:
             # OW enforces unique emails across its users; link without the email instead of
             # attaching this athlete to someone else's OW user.
             log.info("OW user email conflict for athlete %s; creating without email", athlete.id)
@@ -100,7 +100,7 @@ def providers(client: OpenWearablesClient) -> list[WearableProviderOut]:
 
 def sdk_token(db: Session, client: OpenWearablesClient, athlete: Athlete) -> SdkTokenResponse:
     if not settings.ow_sdk_configured:
-        raise OpenWearablesNotConfigured("OW_APP_ID / OW_APP_SECRET are not configured")
+        raise OpenWearablesNotConfiguredError("OW_APP_ID / OW_APP_SECRET are not configured")
     ow_user_id = link_athlete(db, client, athlete)
     token = client.create_sdk_token(ow_user_id)
     return SdkTokenResponse(
@@ -178,7 +178,9 @@ def refresh_athlete(
     recovery = client.recovery_summaries(uid, start, end)
     activity = client.activity_summaries(uid, start, end)
     body = client.body_samples(uid, start, end)
-    points = [p for p in build_daily_points(sleep, recovery, activity, body, zone(tz_name)) if start <= p.local_date <= end]
+    points = [
+        p for p in build_daily_points(sleep, recovery, activity, body, zone(tz_name)) if start <= p.local_date <= end
+    ]
     return store_points(db, athlete, points, start, end)
 
 
@@ -205,4 +207,3 @@ def daily_points(
 
 def known_metric(name: str) -> bool:
     return name in WEARABLE_METRICS
-

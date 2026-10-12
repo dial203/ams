@@ -37,7 +37,7 @@ from functools import cached_property
 from sqlalchemy import ColumnElement, Select, and_, false, or_, select, true
 from sqlalchemy.orm import Session
 
-from app.models import Athlete, AthleteGroup, Form, Group, OrgMembership, Organization, StaffAssignment, User
+from app.models import Athlete, AthleteGroup, Form, Group, Organization, OrgMembership, StaffAssignment, User
 from app.timeutil import today_in
 
 ALL_SENSITIVITIES: frozenset[str] = frozenset({"general", "medical", "research"})

@@ -30,8 +30,12 @@ def test_create_submission_recomputes_and_defaults(client: TestClient, db: Sessi
     r = client.post(
         url,
         headers=admin.headers,
-        json={"form_id": str(form.id), "athlete_id": str(athlete.id), "observed_at": observed,
-              "values": hooper(hooper_total=999, sleep_hours="")},
+        json={
+            "form_id": str(form.id),
+            "athlete_id": str(athlete.id),
+            "observed_at": observed,
+            "values": hooper(hooper_total=999, sleep_hours=""),
+        },
     )
     assert r.status_code == 201, r.text
     s = r.json()
@@ -84,7 +88,9 @@ def test_validation_errors_and_duplicates(client: TestClient, db: Session) -> No
     assert client.post(url, headers=admin.headers, json={**body, "values": hooper()}).status_code == 201
     # unpublished form
     draft = f.form(db, org, "draft_only", f.NUMBER_SCHEMA, published=False)
-    r = client.post(url, headers=admin.headers, json={"form_id": str(draft.id), "athlete_id": str(athlete.id), "values": {}})
+    r = client.post(
+        url, headers=admin.headers, json={"form_id": str(draft.id), "athlete_id": str(athlete.id), "values": {}}
+    )
     assert r.status_code == 409
 
 
@@ -130,14 +136,23 @@ def test_bulk_entry(client: TestClient, db: Session) -> None:
 def test_patch_validates_against_own_version(client: TestClient, db: Session) -> None:
     org = f.org(db)
     admin = f.member(db, org, "admin")
-    v1 = f.simple_schema({"key": "rpe", "type": "number", "label": "RPE", "required": True},
-                         {"key": "x2", "type": "calculated", "label": "x2", "expression": "rpe * 2"})
+    v1 = f.simple_schema(
+        {"key": "rpe", "type": "number", "label": "RPE", "required": True},
+        {"key": "x2", "type": "calculated", "label": "x2", "expression": "rpe * 2"},
+    )
     form = f.form(db, org, "log", v1)
     athlete = f.athlete(db, org)
     sub = f.submit(db, org, form, athlete, {"rpe": 3}, dt.date(2026, 10, 1))
     # publish v2 where rpe is replaced by a required select
-    v2 = f.simple_schema({"key": "effort", "type": "select", "label": "Effort", "required": True,
-                          "options": [{"value": "easy", "label": "Easy"}]})
+    v2 = f.simple_schema(
+        {
+            "key": "effort",
+            "type": "select",
+            "label": "Effort",
+            "required": True,
+            "options": [{"value": "easy", "label": "Easy"}],
+        }
+    )
     client.patch(f"{API}/orgs/{org.id}/forms/{form.id}", headers=admin.headers, json={"draft_schema": v2})
     assert client.post(f"{API}/orgs/{org.id}/forms/{form.id}/publish", headers=admin.headers).json()["version"] == 2
     url = f"{API}/orgs/{org.id}/submissions/{sub.id}"
@@ -174,7 +189,9 @@ def test_soft_delete_and_listing(client: TestClient, db: Session) -> None:
     assert [i["values"]["value"] for i in items] == [2, 3, 1]  # newest local_date first
     assert client.get(url, headers=admin.headers, params={"athlete_id": str(a.id)}).json()["total"] == 2
     assert client.get(url, headers=admin.headers, params={"group_id": str(team.id)}).json()["total"] == 2
-    assert client.get(url, headers=admin.headers, params={"start": "2026-10-02", "end": "2026-10-02"}).json()["total"] == 1
+    assert (
+        client.get(url, headers=admin.headers, params={"start": "2026-10-02", "end": "2026-10-02"}).json()["total"] == 1
+    )
     assert client.get(url, headers=admin.headers, params={"source": "api"}).json()["total"] == 1
     assert client.delete(f"{url}/{s1.id}", headers=admin.headers).status_code == 204
     assert client.get(url, headers=admin.headers).json()["total"] == 2
@@ -197,8 +214,12 @@ def test_export_csv(client: TestClient, db: Session) -> None:
     v1 = f.simple_schema(
         {"key": "a", "type": "number", "label": "A"},
         {"key": "old", "type": "text", "label": "Old"},
-        {"key": "tags", "type": "multiselect", "label": "Tags",
-         "options": [{"value": "x", "label": "X"}, {"value": "y", "label": "Y"}]},
+        {
+            "key": "tags",
+            "type": "multiselect",
+            "label": "Tags",
+            "options": [{"value": "x", "label": "X"}, {"value": "y", "label": "Y"}],
+        },
         {"key": "double", "type": "calculated", "label": "Double", "expression": "a * 2"},
     )
     form = f.form(db, org, "battery", v1)
@@ -220,8 +241,20 @@ def test_export_csv(client: TestClient, db: Session) -> None:
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
     header = r.text.splitlines()[0].split(",")
-    assert header == ["submission_id", "athlete_code", "athlete_name", "local_date", "observed_at", "source",
-                      "form_version", "b", "a", "old", "tags", "double"]
+    assert header == [
+        "submission_id",
+        "athlete_code",
+        "athlete_name",
+        "local_date",
+        "observed_at",
+        "source",
+        "form_version",
+        "b",
+        "a",
+        "old",
+        "tags",
+        "double",
+    ]
     rows = _csv(r.text)
     assert [(x["local_date"], x["form_version"], x["a"], x["b"], x["old"], x["tags"], x["double"]) for x in rows] == [
         ("2026-10-01", "1", "1.5", "", "legacy", "x;y", "3"),
@@ -237,4 +270,7 @@ def test_export_csv(client: TestClient, db: Session) -> None:
     assert r.status_code == 200
     assert "athlete_name" not in r.text.splitlines()[0] and "Pia" not in r.text
     assert len(_csv(r.text)) == 2
-    assert client.get(url, headers=admin.headers, params={"form_id": str(form.id), "start": "2026-10-02"}).text.count("\n") == 2
+    assert (
+        client.get(url, headers=admin.headers, params={"form_id": str(form.id), "start": "2026-10-02"}).text.count("\n")
+        == 2
+    )

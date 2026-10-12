@@ -71,7 +71,9 @@ def test_acwr_ewma_coupled_and_uncoupled() -> None:
         acute.append(la * v + (1 - la) * acute[-1])
         chronic.append(lc * v + (1 - lc) * chronic[-1])
     # hand values: acute_4 = 950/27, chronic_4 = 28.24, chronic_2 = 14
-    assert acute[3] == pytest.approx(950 / 27) and chronic[3] == pytest.approx(28.24) and chronic[1] == pytest.approx(14)
+    assert (
+        acute[3] == pytest.approx(950 / 27) and chronic[3] == pytest.approx(28.24) and chronic[1] == pytest.approx(14)
+    )
     coupled = as_list(t.acwr(x, acute=2, chronic=4, method="ewma", coupled=True))
     assert coupled[:3] == [None, None, None]  # needs `chronic` observed days
     assert coupled[3:] == [round(acute[i] / chronic[i], 6) for i in (3, 4, 5)]

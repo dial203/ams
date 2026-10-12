@@ -92,18 +92,12 @@ def athlete(
     db.add(a)
     db.flush()
     for g in groups:
-        db.add(
-            AthleteGroup(
-                org_id=o.id, athlete_id=a.id, group_id=g.id, joined_on=joined_on or dt.date(2020, 1, 1)
-            )
-        )
+        db.add(AthleteGroup(org_id=o.id, athlete_id=a.id, group_id=g.id, joined_on=joined_on or dt.date(2020, 1, 1)))
     db.commit()
     return a
 
 
-def assign(
-    db: Session, actor: Actor, g: Group, access_role: str, identifiable: bool = True
-) -> StaffAssignment:
+def assign(db: Session, actor: Actor, g: Group, access_role: str, identifiable: bool = True) -> StaffAssignment:
     a = StaffAssignment(
         org_id=g.org_id, user_id=actor.id, group_id=g.id, access_role=access_role, can_view_identifiable=identifiable
     )

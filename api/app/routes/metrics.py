@@ -59,7 +59,12 @@ def create_metric(body: MetricCreate, p: AdminDep, db: DbSession) -> MetricDefin
     db.add(m)
     db.flush()
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="metric.create", entity_type="metric", entity_id=m.id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="metric.create",
+        entity_type="metric",
+        entity_id=m.id,
         details=body.model_dump(mode="json"),
     )
     db.commit()
@@ -77,16 +82,27 @@ def _get_metric(db: DbSession, org_id: uuid.UUID, metric_id: uuid.UUID) -> Metri
 def update_metric(metric_id: uuid.UUID, body: MetricUpdate, p: AdminDep, db: DbSession) -> MetricDefinitionOut:
     m = _get_metric(db, p.org_id, metric_id)
     fields = body.model_dump(exclude_unset=True)
-    for key in ("slug", "name", "source", "daily_agg", "fill_zero", "transform", "params", "decimals",
-                "athlete_visible"):
+    for key in (
+        "slug",
+        "name",
+        "source",
+        "daily_agg",
+        "fill_zero",
+        "transform",
+        "params",
+        "decimals",
+        "athlete_visible",
+    ):
         if key in fields and fields[key] is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"{key} cannot be null")
     if "slug" in fields and fields["slug"] != m.slug:
         if m.builtin:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="built-in metric slugs cannot change")
-        if db.scalar(select(MetricDefinition.id).where(
-            MetricDefinition.org_id == p.org_id, MetricDefinition.slug == fields["slug"]
-        )):
+        if db.scalar(
+            select(MetricDefinition.id).where(
+                MetricDefinition.org_id == p.org_id, MetricDefinition.slug == fields["slug"]
+            )
+        ):
             raise HTTPException(status.HTTP_409_CONFLICT, detail=f"metric slug {fields['slug']!r} already exists")
     source = fields.get("source", m.source)
     validate_definition(
@@ -101,7 +117,12 @@ def update_metric(metric_id: uuid.UUID, body: MetricUpdate, p: AdminDep, db: DbS
     before = metric_out(m).model_dump(mode="json")
     apply_metric_fields(m, {k: getattr(body, k) if k == "thresholds" else v for k, v in fields.items()})
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="metric.update", entity_type="metric", entity_id=m.id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="metric.update",
+        entity_type="metric",
+        entity_id=m.id,
         details=audit.diff(before, metric_out(m).model_dump(mode="json")),
     )
     db.commit()
@@ -122,7 +143,12 @@ def delete_metric(metric_id: uuid.UUID, p: AdminDep, db: DbSession) -> Response:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=f"metric is used by: {', '.join(dependents)}")
     db.delete(m)
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="metric.delete", entity_type="metric", entity_id=metric_id,
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="metric.delete",
+        entity_type="metric",
+        entity_id=metric_id,
         details={"slug": m.slug},
     )
     db.commit()
@@ -139,11 +165,14 @@ def series_sources(p: StaffDep, db: DbSession) -> list[SeriesSourceOut]:
         if not p.can_read_form(form) or form.current_version is None:
             continue
         for key, (label, unit) in numeric_form_fields(form.current_version.schema).items():
-            out.append(SeriesSourceOut(ref=f"form:{form.slug}.{key}", label=f"{form.name}: {label}", unit=unit,
-                                       kind="form"))
+            out.append(
+                SeriesSourceOut(ref=f"form:{form.slug}.{key}", label=f"{form.name}: {label}", unit=unit, kind="form")
+            )
     for key, (unit, label) in WEARABLE_METRICS.items():
         out.append(SeriesSourceOut(ref=f"wearable:{key}", label=label, unit=unit, kind="wearable"))
-    for m in db.scalars(select(MetricDefinition).where(MetricDefinition.org_id == p.org_id).order_by(MetricDefinition.name)):
+    for m in db.scalars(
+        select(MetricDefinition).where(MetricDefinition.org_id == p.org_id).order_by(MetricDefinition.name)
+    ):
         out.append(SeriesSourceOut(ref=f"metric:{m.slug}", label=m.name, unit=m.unit, kind="metric"))
     return out
 

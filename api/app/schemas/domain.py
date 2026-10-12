@@ -365,7 +365,7 @@ class ImportCommit(BaseModel):
     _tz = field_validator("timezone")(_check_tz)
 
 
-class ImportError_(BaseModel):
+class ImportRowError(BaseModel):
     row: int
     message: str
 
@@ -379,7 +379,7 @@ class ImportBatchOut(BaseModel):
     row_count: int
     created_count: int
     skipped_count: int
-    errors: list[ImportError_]
+    errors: list[ImportRowError]
     dry_run: bool
 
 

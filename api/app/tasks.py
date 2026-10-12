@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.integrations.open_wearables.client import OpenWearablesClient
-from app.integrations.open_wearables.errors import OpenWearablesError, OpenWearablesNotConfigured
+from app.integrations.open_wearables.errors import OpenWearablesError, OpenWearablesNotConfiguredError
 from app.models import Athlete, Organization
 from app.services import reminders, wearables
 from app.worker import celery_app
@@ -32,7 +32,7 @@ def refresh_athlete_wearables(athlete_id: str, days: int = 7) -> int:
         db.commit()
         log.info("refreshed %d wearable rows for athlete %s", updated, athlete_id)
         return updated
-    except (OpenWearablesError, OpenWearablesNotConfigured) as exc:
+    except (OpenWearablesError, OpenWearablesNotConfiguredError) as exc:
         db.rollback()
         log.warning("wearable refresh for athlete %s failed: %s", athlete_id, exc)
         return 0
@@ -45,9 +45,7 @@ def refresh_all_wearables(days: int = 7) -> int:
     """Nightly safety net: re-pull the last ``days`` days for every linked, non-archived athlete."""
     db = SessionLocal()
     try:
-        ids = db.scalars(
-            select(Athlete.id).where(Athlete.ow_user_id.is_not(None), Athlete.status != "archived")
-        ).all()
+        ids = db.scalars(select(Athlete.id).where(Athlete.ow_user_id.is_not(None), Athlete.status != "archived")).all()
     finally:
         db.close()
     for aid in ids:

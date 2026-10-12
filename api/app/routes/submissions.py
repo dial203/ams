@@ -27,9 +27,9 @@ from app.schemas.domain import (
 from app.services.forms import get_form_or_404
 from app.services.people import get_visible_athlete
 from app.services.submissions import (
-    DuplicateSubmission,
-    FormNotPublished,
-    SubmissionInvalid,
+    DuplicateSubmissionError,
+    FormNotPublishedError,
+    SubmissionInvalidError,
     audit_reads,
     build_csv,
     create_submission,
@@ -149,7 +149,7 @@ def create_for(
             observed_at=body.observed_at,  # type: ignore[attr-defined]
             local_date=body.local_date,  # type: ignore[attr-defined]
         )
-    except (SubmissionInvalid, DuplicateSubmission, FormNotPublished) as exc:
+    except (SubmissionInvalidError, DuplicateSubmissionError, FormNotPublishedError) as exc:
         raise exc.http() from exc
     db.commit()
     return submission_out(sub, athlete, rights)
@@ -159,7 +159,7 @@ def create_for(
 def bulk_create(body: BulkSubmissionCreate, p: PrincipalDep, db: DbSession) -> BulkSubmissionResult:
     form = get_form_or_404(db, p, body.form_id)
     if form.current_version is None:
-        raise FormNotPublished().http()
+        raise FormNotPublishedError().http()
     if form.archived:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="form is archived")
     ids = [e.athlete_id for e in body.entries]
@@ -191,10 +191,10 @@ def bulk_create(body: BulkSubmissionCreate, p: PrincipalDep, db: DbSession) -> B
                     local_date=body.local_date,
                     pending_days=pending,
                 )
-        except SubmissionInvalid as exc:
+        except SubmissionInvalidError as exc:
             errors.append(BulkError(athlete_id=entry.athlete_id, field_errors=exc.field_errors))
             continue
-        except DuplicateSubmission:
+        except DuplicateSubmissionError:
             errors.append(BulkError(athlete_id=entry.athlete_id, field_errors={"local_date": "duplicate"}))
             continue
         created.append(submission_out(sub, athlete, r))
@@ -227,8 +227,13 @@ def export_csv(
     body = build_csv([(s, a) for s, a, _ in rows], versions, include_name)
     audit_reads(db, p, [(s, f) for s, _, f in rows], "submission.export")
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="submission.export_csv", entity_type="form",
-        entity_id=form.id, details={"rows": len(rows), "deidentified": not include_name},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="submission.export_csv",
+        entity_type="form",
+        entity_id=form.id,
+        details={"rows": len(rows), "deidentified": not include_name},
     )
     db.commit()
     filename = f"{form.slug}-{utcnow().date().isoformat()}.csv"
@@ -255,9 +260,7 @@ def get_submission(submission_id: uuid.UUID, p: PrincipalDep, db: DbSession) -> 
 
 
 @router.patch("/{submission_id}", response_model=SubmissionOut)
-def patch_submission(
-    submission_id: uuid.UUID, body: SubmissionUpdate, p: PrincipalDep, db: DbSession
-) -> SubmissionOut:
+def patch_submission(submission_id: uuid.UUID, body: SubmissionUpdate, p: PrincipalDep, db: DbSession) -> SubmissionOut:
     sub, athlete, form = _get_readable(db, p, submission_id)
     rights = p.rights(athlete.id)
     if not p.can_write_form_data(form, athlete.id, rights):
@@ -274,7 +277,7 @@ def patch_submission(
             observed_at=body.observed_at,
             local_date=body.local_date,
         )
-    except (SubmissionInvalid, DuplicateSubmission) as exc:
+    except (SubmissionInvalidError, DuplicateSubmissionError) as exc:
         raise exc.http() from exc
     db.commit()
     return submission_out(sub, athlete, rights)
@@ -287,8 +290,13 @@ def delete_submission(submission_id: uuid.UUID, p: PrincipalDep, db: DbSession) 
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="write access required")
     sub.deleted_at = utcnow()
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="submission.delete", entity_type="submission",
-        entity_id=sub.id, details={"form_id": form.id, "athlete_id": athlete.id, "values": sub.values},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="submission.delete",
+        entity_type="submission",
+        entity_id=sub.id,
+        details={"form_id": form.id, "athlete_id": athlete.id, "values": sub.values},
     )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -74,7 +74,9 @@ class FormVersion(Base):
     form_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("form.id", ondelete="CASCADE"), index=True)
     version: Mapped[int] = mapped_column(Integer)
     schema: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    published_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
+    published_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=utcnow
+    )
     published_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_account.id", ondelete="SET NULL"))
 
 

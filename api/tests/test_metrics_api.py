@@ -16,8 +16,9 @@ def day(n: int) -> dt.date:
     return D0 + dt.timedelta(days=n)
 
 
-def series(client: TestClient, org_id: object, headers: dict, slug: str, athlete_id: object, start: dt.date,
-           end: dt.date) -> dict:
+def series(
+    client: TestClient, org_id: object, headers: dict, slug: str, athlete_id: object, start: dt.date, end: dt.date
+) -> dict:
     r = client.get(
         f"{API}/orgs/{org_id}/metrics/{slug}/series",
         headers=headers,
@@ -41,8 +42,11 @@ def test_builtins_seeded_and_editable(client: TestClient, db: Session) -> None:
     assert by_slug["sleep_duration"]["thresholds"] == {"direction": "low_bad", "amber": 420.0, "red": 360.0}
     assert by_slug["wellness_hooper"]["athlete_visible"] is True
     mid = by_slug["rhr_z"]["id"]
-    r = client.patch(f"{API}/orgs/{org.id}/metrics/{mid}", headers=admin.headers,
-                     json={"thresholds": {"direction": "high_bad", "amber": 1.5, "red": 2.5}})
+    r = client.patch(
+        f"{API}/orgs/{org.id}/metrics/{mid}",
+        headers=admin.headers,
+        json={"thresholds": {"direction": "high_bad", "amber": 1.5, "red": 2.5}},
+    )
     assert r.status_code == 200 and r.json()["thresholds"]["amber"] == 1.5
     assert client.delete(f"{API}/orgs/{org.id}/metrics/{mid}", headers=admin.headers).status_code == 400
     # built-ins referencing missing template forms resolve to empty series, not errors
@@ -57,14 +61,27 @@ def test_metric_create_validation(client: TestClient, db: Session) -> None:
     admin = f.member(db, org, "admin")
     f.template_form(db, org, "session_rpe")
     url = f"{API}/orgs/{org.id}/metrics"
-    ok = {"slug": "load_ewma", "name": "Load EWMA", "source": "form:session_rpe.srpe", "daily_agg": "sum",
-          "fill_zero": True, "transform": "ewma", "params": {"span": 7}}
+    ok = {
+        "slug": "load_ewma",
+        "name": "Load EWMA",
+        "source": "form:session_rpe.srpe",
+        "daily_agg": "sum",
+        "fill_zero": True,
+        "transform": "ewma",
+        "params": {"span": 7},
+    }
     r = client.post(url, headers=admin.headers, json=ok)
     assert r.status_code == 201, r.text
     assert r.json()["builtin"] is False
     assert client.post(url, headers=admin.headers, json=ok).status_code == 409
-    for source in ("form:nope.x", "form:session_rpe.nope", "form:session_rpe.notes", "wearable:nope", "metric:nope",
-                   "garbage"):
+    for source in (
+        "form:nope.x",
+        "form:session_rpe.nope",
+        "form:session_rpe.notes",
+        "wearable:nope",
+        "metric:nope",
+        "garbage",
+    ):
         r = client.post(url, headers=admin.headers, json={**ok, "slug": "x1", "source": source})
         assert r.status_code == 422, source
     assert client.post(url, headers=admin.headers, json={**ok, "slug": "x2", "params": {"span": 0}}).status_code == 422
@@ -118,9 +135,15 @@ def test_zscore_same_source_after_device_switch(client: TestClient, db: Session)
     r = client.post(
         f"{API}/orgs/{org.id}/metrics",
         headers=admin.headers,
-        json={"slug": "hrv_raw_z", "name": "HRV z", "source": "wearable:hrv_rmssd_ms", "transform": "zscore",
-              "params": {"baseline": 28, "min_periods": 5}, "decimals": 3,
-              "thresholds": {"direction": "low_bad", "amber": -1, "red": -2}},
+        json={
+            "slug": "hrv_raw_z",
+            "name": "HRV z",
+            "source": "wearable:hrv_rmssd_ms",
+            "transform": "zscore",
+            "params": {"baseline": 28, "min_periods": 5},
+            "decimals": 3,
+            "thresholds": {"direction": "low_bad", "amber": -1, "red": -2},
+        },
     )
     assert r.status_code == 201, r.text
     pts = series(client, org.id, admin.headers, "hrv_raw_z", a.id, day(15), day(29))["points"]
@@ -169,15 +192,28 @@ def test_series_permissions(client: TestClient, db: Session) -> None:
     a = f.athlete(db, org, groups=(team,))
     hidden = f.athlete(db, org)
     f.form(db, org, "med", f.NUMBER_SCHEMA, sensitivity="medical")
-    client.post(f"{API}/orgs/{org.id}/metrics", headers=admin.headers,
-                json={"slug": "med_val", "name": "Medical value", "source": "form:med.value"})
+    client.post(
+        f"{API}/orgs/{org.id}/metrics",
+        headers=admin.headers,
+        json={"slug": "med_val", "name": "Medical value", "source": "form:med.value"},
+    )
     url = f"{API}/orgs/{org.id}/metrics/med_val/series"
     assert client.get(url, headers=coach.headers, params={"athlete_id": str(a.id)}).status_code == 403
     assert client.get(url, headers=admin.headers, params={"athlete_id": str(a.id)}).status_code == 200
-    assert client.get(f"{API}/orgs/{org.id}/metrics/sleep_duration/series", headers=coach.headers,
-                      params={"athlete_id": str(hidden.id)}).status_code == 404
-    assert client.get(f"{API}/orgs/{org.id}/metrics/nope/series", headers=coach.headers,
-                      params={"athlete_id": str(a.id)}).status_code == 404
+    assert (
+        client.get(
+            f"{API}/orgs/{org.id}/metrics/sleep_duration/series",
+            headers=coach.headers,
+            params={"athlete_id": str(hidden.id)},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"{API}/orgs/{org.id}/metrics/nope/series", headers=coach.headers, params={"athlete_id": str(a.id)}
+        ).status_code
+        == 404
+    )
 
 
 def test_series_sources(client: TestClient, db: Session) -> None:
@@ -206,27 +242,52 @@ def test_readiness_board_and_due_forms(client: TestClient, db: Session) -> None:
     bad = f.athlete(db, org, "Bad", "Day", code="R-2", groups=(squad,))
     outsider = f.athlete(db, org, "Out", "Side", code="R-3")
     board_day = dt.date(2026, 10, 10)
-    f.submit(db, org, wellness, good, {"sleep_quality": 2, "fatigue": 2, "stress": 2, "soreness": 2, "has_pain": False},
-             board_day)
-    f.submit(db, org, wellness, bad, {"sleep_quality": 6, "fatigue": 6, "stress": 5, "soreness": 6, "has_pain": False},
-             board_day - dt.timedelta(days=2))
-    f.submit(db, org, wellness, outsider, {"sleep_quality": 1, "fatigue": 1, "stress": 1, "soreness": 1,
-                                           "has_pain": False}, board_day - dt.timedelta(days=5))
+    f.submit(
+        db,
+        org,
+        wellness,
+        good,
+        {"sleep_quality": 2, "fatigue": 2, "stress": 2, "soreness": 2, "has_pain": False},
+        board_day,
+    )
+    f.submit(
+        db,
+        org,
+        wellness,
+        bad,
+        {"sleep_quality": 6, "fatigue": 6, "stress": 5, "soreness": 6, "has_pain": False},
+        board_day - dt.timedelta(days=2),
+    )
+    f.submit(
+        db,
+        org,
+        wellness,
+        outsider,
+        {"sleep_quality": 1, "fatigue": 1, "stress": 1, "soreness": 1, "has_pain": False},
+        board_day - dt.timedelta(days=5),
+    )
     f.wearable(db, bad, board_day, "sleep_duration_min", 330, unit="min")
     f.wearable(db, good, board_day - dt.timedelta(days=1), "sleep_duration_min", 480, unit="min")
     # schedule on the parent group applies to the squad
-    client.post(f"{API}/orgs/{org.id}/forms/{wellness.id}/schedules", headers=admin.headers,
-                json={"group_id": str(team.id), "recurrence": "daily", "start_date": "2026-01-01", "due_time": "08:00"})
-    r = client.get(f"{API}/orgs/{org.id}/dashboards/readiness", headers=admin.headers,
-                   params={"date": board_day.isoformat()})
+    client.post(
+        f"{API}/orgs/{org.id}/forms/{wellness.id}/schedules",
+        headers=admin.headers,
+        json={"group_id": str(team.id), "recurrence": "daily", "start_date": "2026-01-01", "due_time": "08:00"},
+    )
+    r = client.get(
+        f"{API}/orgs/{org.id}/dashboards/readiness", headers=admin.headers, params={"date": board_day.isoformat()}
+    )
     assert r.status_code == 200, r.text
     board = r.json()
     assert [c["slug"] for c in board["columns"]] == ["wellness_hooper", "hrv_z", "rhr_z", "sleep_duration", "acwr"]
     rows = {row["athlete"]["code"]: row for row in board["rows"]}
     assert set(rows) == {"R-1", "R-2", "R-3"}
     assert rows["R-1"]["cells"]["wellness_hooper"] == {"value": 8, "flag": "green", "date": board_day.isoformat()}
-    assert rows["R-2"]["cells"]["wellness_hooper"] == {"value": 23, "flag": "red",
-                                                       "date": (board_day - dt.timedelta(days=2)).isoformat()}
+    assert rows["R-2"]["cells"]["wellness_hooper"] == {
+        "value": 23,
+        "flag": "red",
+        "date": (board_day - dt.timedelta(days=2)).isoformat(),
+    }
     # older than 3 days -> empty cell
     assert rows["R-3"]["cells"]["wellness_hooper"] == {"value": None, "flag": None, "date": None}
     assert rows["R-2"]["cells"]["sleep_duration"]["flag"] == "red"
@@ -236,11 +297,15 @@ def test_readiness_board_and_due_forms(client: TestClient, db: Session) -> None:
     assert (rows["R-1"]["due_forms"], rows["R-2"]["due_forms"], rows["R-3"]["due_forms"]) == (0, 1, 0)
     assert rows["R-1"]["athlete"]["position"] == "Mid"
     # group filter (descendants included) and masking for blinded staff
-    r = client.get(f"{API}/orgs/{org.id}/dashboards/readiness", headers=admin.headers,
-                   params={"date": board_day.isoformat(), "group_id": str(team.id)})
+    r = client.get(
+        f"{API}/orgs/{org.id}/dashboards/readiness",
+        headers=admin.headers,
+        params={"date": board_day.isoformat(), "group_id": str(team.id)},
+    )
     assert {row["athlete"]["code"] for row in r.json()["rows"]} == {"R-1", "R-2"}
-    r = client.get(f"{API}/orgs/{org.id}/dashboards/readiness", headers=researcher.headers,
-                   params={"date": board_day.isoformat()})
+    r = client.get(
+        f"{API}/orgs/{org.id}/dashboards/readiness", headers=researcher.headers, params={"date": board_day.isoformat()}
+    )
     rows = r.json()["rows"]
     assert [row["athlete"]["display_name"] for row in rows] == ["R-1"]
     assert rows[0]["cells"]["wellness_hooper"]["value"] == 8

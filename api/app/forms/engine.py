@@ -9,9 +9,17 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
-from app.forms.expr import EvalError, Node, ParseError, identifiers, is_finite_number, parse
+from app.forms.expr import (
+    EvalError,
+    Node,
+    ParseError,
+    identifiers,
+    is_finite_number,
+    parse,
+    round_half_away,
+    values_equal,
+)
 from app.forms.expr import evaluate as eval_expr
-from app.forms.expr import round_half_away, values_equal
 from app.forms.schema import FieldInfo, SchemaIndex, index_schema
 
 DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$")
@@ -137,9 +145,7 @@ def evaluate(schema: dict[str, Any], values: dict[str, Any]) -> Evaluation:
 
     visible = {f.key: f.key not in hidden for f in idx.fields}
     computed = {c.key: _to_json_number(env.get(c.key)) for c in idx.calculated_fields}
-    out_values = {
-        f.key: input_values[f.key] for f in inputs if f.key not in hidden and input_values[f.key] is not None
-    }
+    out_values = {f.key: input_values[f.key] for f in inputs if f.key not in hidden and input_values[f.key] is not None}
     return Evaluation(visible=visible, computed=computed, values=out_values, hidden=hidden)
 
 

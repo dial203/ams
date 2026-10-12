@@ -42,10 +42,8 @@ def list_athletes(
     offset: Offset = 0,
 ) -> Page[AthleteOut]:
     query = select(Athlete).where(Athlete.org_id == p.org_id, p.visible_athletes_clause(Athlete.id))
-    if status_ is not None:
-        query = query.where(Athlete.status == status_)
-    else:
-        query = query.where(Athlete.status != "archived")
+    # without ?status, archived athletes are left out
+    query = query.where(Athlete.status == status_ if status_ is not None else Athlete.status != "archived")
     if group_id is not None:
         group = db.get(Group, group_id)
         if group is None or group.org_id != p.org_id:
@@ -84,9 +82,8 @@ def create_athlete(body: AthleteCreate, p: PrincipalDep, db: DbSession) -> Athle
         group = db.get(Group, gid)
         if group is None or group.org_id != p.org_id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"group {gid} not found")
-    if not p.is_admin:
-        if not p.is_staff or not group_ids or not all(p.can_write_group(g) for g in group_ids):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="admin, or staff with write on every listed group")
+    if not p.is_admin and (not p.is_staff or not group_ids or not all(p.can_write_group(g) for g in group_ids)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="admin, or staff with write on every listed group")
     code = body.code or next_athlete_code(db, p.org_id)
     if code_taken(db, p.org_id, code):
         raise HTTPException(status.HTTP_409_CONFLICT, detail=f"athlete code {code!r} already exists")
@@ -109,8 +106,13 @@ def create_athlete(body: AthleteCreate, p: PrincipalDep, db: DbSession) -> Athle
     for gid in group_ids:
         add_to_group(db, p.org_id, athlete.id, gid, p.today)
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="athlete.create", entity_type="athlete",
-        entity_id=athlete.id, details={"after": athlete_snapshot(athlete), "group_ids": group_ids},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="athlete.create",
+        entity_type="athlete",
+        entity_id=athlete.id,
+        details={"after": athlete_snapshot(athlete), "group_ids": group_ids},
     )
     db.commit()
     return athletes_out(db, p, [athlete])[0]
@@ -161,8 +163,13 @@ def update_athlete(athlete_id: uuid.UUID, body: AthleteUpdate, p: PrincipalDep, 
             add_to_group(db, p.org_id, athlete.id, gid, p.today)
         group_changes = {"added": to_add, "removed": to_remove}
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="athlete.update", entity_type="athlete",
-        entity_id=athlete.id, details=audit.diff(before, athlete_snapshot(athlete)) | {"groups": group_changes},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="athlete.update",
+        entity_type="athlete",
+        entity_id=athlete.id,
+        details=audit.diff(before, athlete_snapshot(athlete)) | {"groups": group_changes},
     )
     db.commit()
     return athletes_out(db, p, [athlete])[0]
@@ -174,8 +181,13 @@ def archive_athlete(athlete_id: uuid.UUID, p: AdminDep, db: DbSession) -> Respon
     previous = athlete.status
     athlete.status = "archived"
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="athlete.archive", entity_type="athlete",
-        entity_id=athlete.id, details={"before": {"status": previous}, "after": {"status": "archived"}},
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="athlete.archive",
+        entity_type="athlete",
+        entity_id=athlete.id,
+        details={"before": {"status": previous}, "after": {"status": "archived"}},
     )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

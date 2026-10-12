@@ -46,8 +46,10 @@ def test_template_calculations() -> None:
     assert validate(body, {"body_mass_kg": 80.2, "usg": 1.025}).computed["hydration"] == "check"
     assert validate(body, {"body_mass_kg": 80.2}).computed["hydration"] is None
     injury = TEMPLATES["injury_report"].schema
-    r = validate(injury, {"onset_date": "2026-10-01", "problem_type": "illness", "availability": "unavailable",
-                          "expected_days_out": 10})
+    r = validate(
+        injury,
+        {"onset_date": "2026-10-01", "problem_type": "illness", "availability": "unavailable", "expected_days_out": 10},
+    )
     assert r.ok and r.computed["expected_return"] == "moderate"
     assert not validate(injury, {"onset_date": "2026-10-01", "problem_type": "injury", "availability": "full"}).ok
 
@@ -96,8 +98,16 @@ def test_draft_publish_versioning(client: TestClient, db: Session) -> None:
     stored_v1 = db.get(FormVersion, v1["id"])
     assert stored_v1 is not None and stored_v1.schema == SCHEMA_V1
     # slug conflicts, archived listing
-    assert client.post(url, headers=admin.headers, json={"name": "x", "slug": "session_log", "kind": "session"}).status_code == 409
-    assert client.post(url, headers=admin.headers, json={"name": "x", "slug": "Bad Slug", "kind": "session"}).status_code == 422
+    assert (
+        client.post(
+            url, headers=admin.headers, json={"name": "x", "slug": "session_log", "kind": "session"}
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(url, headers=admin.headers, json={"name": "x", "slug": "Bad Slug", "kind": "session"}).status_code
+        == 422
+    )
     client.patch(f"{url}/{fid}", headers=admin.headers, json={"archived": True})
     assert client.get(url, headers=admin.headers).json() == []
     assert len(client.get(url, headers=admin.headers, params={"include_archived": True}).json()) == 1
@@ -120,7 +130,12 @@ def test_template_list_and_install(client: TestClient, db: Session) -> None:
     admin = f.member(db, org, "admin")
     templates = client.get(f"{API}/orgs/{org.id}/form-templates", headers=admin.headers).json()
     assert {t["key"] for t in templates} == {
-        "wellness_hooper", "session_rpe", "injury_report", "cmj_test", "gps_session", "body_mass"
+        "wellness_hooper",
+        "session_rpe",
+        "injury_report",
+        "cmj_test",
+        "gps_session",
+        "body_mass",
     }
     hooper = next(t for t in templates if t["key"] == "wellness_hooper")
     assert hooper["references"] and hooper["schema"]["schema_version"] == 1
@@ -132,10 +147,14 @@ def test_template_list_and_install(client: TestClient, db: Session) -> None:
     injury = client.post(f"{API}/orgs/{org.id}/form-templates/injury_report/install", headers=admin.headers).json()
     assert injury["sensitivity"] == "medical" and injury["kind"] == "medical"
     # second install gets a unique slug; explicit slug conflicts are 409
-    again = client.post(f"{API}/orgs/{org.id}/form-templates/wellness_hooper/install", headers=admin.headers, json={"name": "Copy"})
+    again = client.post(
+        f"{API}/orgs/{org.id}/form-templates/wellness_hooper/install", headers=admin.headers, json={"name": "Copy"}
+    )
     assert again.json()["slug"] == "wellness_hooper_2" and again.json()["name"] == "Copy"
     conflict = client.post(
-        f"{API}/orgs/{org.id}/form-templates/wellness_hooper/install", headers=admin.headers, json={"slug": "wellness_hooper"}
+        f"{API}/orgs/{org.id}/form-templates/wellness_hooper/install",
+        headers=admin.headers,
+        json={"slug": "wellness_hooper"},
     )
     assert conflict.status_code == 409
     assert client.post(f"{API}/orgs/{org.id}/form-templates/nope/install", headers=admin.headers).status_code == 404
@@ -149,8 +168,14 @@ def test_schedules_crud(client: TestClient, db: Session) -> None:
     f.assign(db, coach, team, "coach")
     form = f.template_form(db, org, "wellness_hooper")
     url = f"{API}/orgs/{org.id}/forms/{form.id}/schedules"
-    body = {"group_id": str(team.id), "recurrence": "weekly", "days_of_week": [3, 1], "due_time": "07:30",
-            "start_date": "2026-01-01", "remind": True}
+    body = {
+        "group_id": str(team.id),
+        "recurrence": "weekly",
+        "days_of_week": [3, 1],
+        "due_time": "07:30",
+        "start_date": "2026-01-01",
+        "remind": True,
+    }
     r = client.post(url, headers=admin.headers, json=body)
     assert r.status_code == 201, r.text
     s = r.json()

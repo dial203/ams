@@ -51,10 +51,23 @@ def world(db: Session) -> World:
     }
     from app.models import AthleteGroup
 
-    db.add(AthleteGroup(org_id=org.id, athlete_id=athletes["left1"].id, group_id=sprints.id,
-                        joined_on=TODAY - dt.timedelta(days=100), left_on=TODAY - dt.timedelta(days=10)))
-    db.add(AthleteGroup(org_id=org.id, athlete_id=athletes["future1"].id, group_id=sprints.id,
-                        joined_on=TODAY + dt.timedelta(days=5)))
+    db.add(
+        AthleteGroup(
+            org_id=org.id,
+            athlete_id=athletes["left1"].id,
+            group_id=sprints.id,
+            joined_on=TODAY - dt.timedelta(days=100),
+            left_on=TODAY - dt.timedelta(days=10),
+        )
+    )
+    db.add(
+        AthleteGroup(
+            org_id=org.id,
+            athlete_id=athletes["future1"].id,
+            group_id=sprints.id,
+            joined_on=TODAY + dt.timedelta(days=5),
+        )
+    )
     db.commit()
 
     actors = {
@@ -81,13 +94,21 @@ def world(db: Session) -> World:
     num = f.NUMBER_SCHEMA
     forms = {
         "general": f.form(db, org, "wellness", num, sensitivity="general", athlete_can_view=True),
-        "medical": f.form(db, org, "injury", num, sensitivity="medical", athlete_can_view=False,
-                          athlete_can_submit=False, kind="medical"),
+        "medical": f.form(
+            db,
+            org,
+            "injury",
+            num,
+            sensitivity="medical",
+            athlete_can_view=False,
+            athlete_can_submit=False,
+            kind="medical",
+        ),
         "research": f.form(db, org, "study_q", num, sensitivity="research", athlete_can_view=False),
     }
     day = TODAY - dt.timedelta(days=1)
     for a in ("s1", "d1", "st1"):
-        for k, fm in forms.items():
+        for fm in forms.values():
             f.submit(db, org, fm, athletes[a], {"value": 1}, day)
     return World(org, other, groups, athletes, actors, forms)
 
@@ -150,7 +171,9 @@ def test_patch_athlete(client: TestClient, world: World, actor: str) -> None:
 
 def test_masking_union_and_search(client: TestClient, world: World) -> None:
     # researcher: masked (assignment has can_view_identifiable=false)
-    r = client.get(f"{API}/orgs/{world.org.id}/athletes/{world.athletes['st1'].id}", headers=world.actors["researcher"].headers)
+    r = client.get(
+        f"{API}/orgs/{world.org.id}/athletes/{world.athletes['st1'].id}", headers=world.actors["researcher"].headers
+    )
     body = r.json()
     assert body["masked"] is True
     assert body["display_name"] == "ST-1"
@@ -163,7 +186,9 @@ def test_masking_union_and_search(client: TestClient, world: World) -> None:
     assert codes(client, world, "admin", q="sam@example") == {"S-1"}
     assert codes(client, world, "coach", q="sprinter") == {"S-1"}
     # multi: masked via Sprints coach scope, but identifiable via the Athletics viewer scope -> union = identifiable
-    r = client.get(f"{API}/orgs/{world.org.id}/athletes/{world.athletes['s1'].id}", headers=world.actors["multi"].headers)
+    r = client.get(
+        f"{API}/orgs/{world.org.id}/athletes/{world.athletes['s1'].id}", headers=world.actors["multi"].headers
+    )
     assert r.json()["masked"] is False and r.json()["first_name"] == "Sam"
     # masked staff may not write PII fields
     r = client.patch(
@@ -217,7 +242,11 @@ def test_submission_write_matrix(client: TestClient, world: World, actor: str) -
         r = client.post(
             f"{API}/orgs/{world.org.id}/submissions",
             headers=world.actors[actor].headers,
-            json={"form_id": str(world.forms[sens].id), "athlete_id": str(world.athletes[athlete].id), "values": {"value": 2}},
+            json={
+                "form_id": str(world.forms[sens].id),
+                "athlete_id": str(world.athletes[athlete].id),
+                "values": {"value": 2},
+            },
         )
         assert r.status_code == expected, (actor, athlete, sens, r.text)
 
@@ -305,7 +334,9 @@ def test_group_listing_for_staff_includes_ancestors(client: TestClient, world: W
     assert {g["name"] for g in r.json()} == {"Athletics", "Sprints", "Distance"}
     r = client.get(f"{API}/orgs/{world.org.id}/groups", headers=world.actors["admin"].headers)
     assert len(r.json()) == 5
-    r = client.get(f"{API}/orgs/{world.org.id}/groups/{world.groups['study'].id}", headers=world.actors["coach"].headers)
+    r = client.get(
+        f"{API}/orgs/{world.org.id}/groups/{world.groups['study'].id}", headers=world.actors["coach"].headers
+    )
     assert r.status_code == 404
 
 
@@ -380,7 +411,10 @@ def test_medical_reads_are_audited(client: TestClient, world: World, db: Session
     assert client.get(f"{API}/orgs/{world.org.id}/submissions/{sub_id}", headers=medic.headers).status_code == 200
     assert len(db.scalars(select(AuditLog).where(AuditLog.action == "submission.read")).all()) == 2
     # coach cannot read it at all
-    assert client.get(f"{API}/orgs/{world.org.id}/submissions/{sub_id}", headers=world.actors["coach"].headers).status_code == 404
+    assert (
+        client.get(f"{API}/orgs/{world.org.id}/submissions/{sub_id}", headers=world.actors["coach"].headers).status_code
+        == 404
+    )
 
 
 def test_audit_endpoint(client: TestClient, world: World) -> None:
@@ -388,7 +422,9 @@ def test_audit_endpoint(client: TestClient, world: World) -> None:
     a = world.athletes["s1"]
     client.patch(f"{API}/orgs/{world.org.id}/athletes/{a.id}", headers=admin.headers, json={"position": "100m"})
     r = client.get(
-        f"{API}/orgs/{world.org.id}/audit", headers=admin.headers, params={"entity_type": "athlete", "entity_id": str(a.id)}
+        f"{API}/orgs/{world.org.id}/audit",
+        headers=admin.headers,
+        params={"entity_type": "athlete", "entity_id": str(a.id)},
     )
     assert r.status_code == 200
     entry = r.json()["items"][0]

@@ -76,14 +76,17 @@ def update_member(user_id: uuid.UUID, body: MemberUpdate, p: AdminDep, db: DbSes
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="only an owner can grant or revoke the owner role")
     if m.role == "owner" and body.role != "owner" and owner_count(db, p.org_id) <= 1:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="cannot demote the last owner")
-    if body.role == "athlete" and db.scalar(
-        select(Athlete.id).where(Athlete.org_id == p.org_id, Athlete.user_id == user_id)
-    ) is None:
+    if (
+        body.role == "athlete"
+        and db.scalar(select(Athlete.id).where(Athlete.org_id == p.org_id, Athlete.user_id == user_id)) is None
+    ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="the athlete role needs a linked athlete record")
     old = m.role
     m.role = body.role
     if body.role == "athlete":
-        db.execute(delete(StaffAssignment).where(StaffAssignment.org_id == p.org_id, StaffAssignment.user_id == user_id))
+        db.execute(
+            delete(StaffAssignment).where(StaffAssignment.org_id == p.org_id, StaffAssignment.user_id == user_id)
+        )
     audit.record(
         db,
         org_id=p.org_id,
@@ -109,9 +112,7 @@ def remove_member(user_id: uuid.UUID, p: AdminDep, db: DbSession) -> Response:
     for athlete in db.scalars(select(Athlete).where(Athlete.org_id == p.org_id, Athlete.user_id == user_id)):
         athlete.user_id = None
     db.delete(m)
-    audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="member.remove", entity_type="user", entity_id=user_id
-    )
+    audit.record(db, org_id=p.org_id, user_id=p.user_id, action="member.remove", entity_type="user", entity_id=user_id)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -166,9 +167,7 @@ def delete_invitation(invitation_id: uuid.UUID, p: AdminDep, db: DbSession) -> R
     status_code=status.HTTP_201_CREATED,
     tags=["athletes"],
 )
-def invite_athlete(
-    athlete_id: uuid.UUID, body: AthleteInviteRequest, p: PrincipalDep, db: DbSession
-) -> InvitationOut:
+def invite_athlete(athlete_id: uuid.UUID, body: AthleteInviteRequest, p: PrincipalDep, db: DbSession) -> InvitationOut:
     athlete, rights = get_visible_athlete(db, p, athlete_id)
     if not (p.is_admin or (p.is_staff and rights.write)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="write access to the athlete required")

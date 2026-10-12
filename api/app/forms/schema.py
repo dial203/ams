@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.forms.expr import RESERVED_WORDS, Node, ParseError, identifiers, is_finite_number, is_number, parse
+from app.forms.expr import RESERVED_WORDS, Node, ParseError, identifiers, is_finite_number, parse
 
 KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 
@@ -173,8 +173,10 @@ def validate_schema(schema: Any) -> list[SchemaError]:
             section_keys.add(skey)
         if not isinstance(section.get("title"), str):
             err(f"{sp}/title", "section title is required")
-        if "description" in section and section["description"] is not None and not isinstance(
-            section["description"], str
+        if (
+            "description" in section
+            and section["description"] is not None
+            and not isinstance(section["description"], str)
         ):
             err(f"{sp}/description", "description must be a string")
         fields = section.get("fields")

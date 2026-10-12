@@ -197,10 +197,10 @@ class MetricEngine:
                 per_day[aid][day].append(num)
         daily = {aid: {d: _agg(vals, agg) for d, vals in days.items()} for aid, days in per_day.items()}
         # first observation of the field (for fill_zero), possibly before the loaded window
-        first_q = select(Submission.athlete_id, func.min(Submission.local_date)).where(*scope).group_by(
-            Submission.athlete_id
+        first_q = (
+            select(Submission.athlete_id, func.min(Submission.local_date)).where(*scope).group_by(Submission.athlete_id)
         )
-        firsts = {aid: day for aid, day in self.db.execute(first_q)}
+        firsts: dict[uuid.UUID, dt.date] = {row[0]: row[1] for row in self.db.execute(first_q)}
         return daily, firsts
 
     def _wearable_daily(
@@ -258,8 +258,11 @@ class MetricEngine:
                 first = min(days) if (start is None and days) else firsts.get(aid)
                 idx = self._calendar(first, start, end)
                 values = pd.Series([days.get(d.date(), np.nan) for d in idx], index=idx, dtype=float)
-                out[aid] = self._fill(Series(values, pd.Series([None] * len(idx), index=idx, dtype=object)),
-                                      firsts.get(aid), defn.fill_zero)
+                out[aid] = self._fill(
+                    Series(values, pd.Series([None] * len(idx), index=idx, dtype=object)),
+                    firsts.get(aid),
+                    defn.fill_zero,
+                )
             return out
         wdaily, firsts = self._wearable_daily(ref, start, end)
         for aid in self.athlete_ids:
@@ -377,9 +380,12 @@ def validate_source(db: Session, org_id: uuid.UUID, source: str) -> SeriesRef:
             raise MetricError(f"unknown wearable metric {ref.name!r}")
         return ref
     if ref.kind == "metric":
-        if db.scalar(select(MetricDefinition.id).where(
-            MetricDefinition.org_id == org_id, MetricDefinition.slug == ref.name
-        )) is None:
+        if (
+            db.scalar(
+                select(MetricDefinition.id).where(MetricDefinition.org_id == org_id, MetricDefinition.slug == ref.name)
+            )
+            is None
+        ):
             raise MetricError(f"unknown metric {ref.name!r}")
         return ref
     form = db.scalar(select(Form).where(Form.org_id == org_id, Form.slug == ref.name))
@@ -397,7 +403,9 @@ def validate_source(db: Session, org_id: uuid.UUID, source: str) -> SeriesRef:
 def check_cycles(db: Session, org_id: uuid.UUID, slug: str, source: str) -> None:
     """Reject a definition whose ``metric:`` chain leads back to itself."""
     sources = dict(
-        db.execute(select(MetricDefinition.slug, MetricDefinition.source).where(MetricDefinition.org_id == org_id)).all()
+        db.execute(
+            select(MetricDefinition.slug, MetricDefinition.source).where(MetricDefinition.org_id == org_id)
+        ).all()
     )
     sources[slug] = source
     seen = [slug]

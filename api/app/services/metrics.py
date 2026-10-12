@@ -81,7 +81,9 @@ def can_read_metric(p: Principal, forms: list[Form], athlete_id: uuid.UUID) -> b
     return all(p.can_read_form_data(f, athlete_id) for f in forms)
 
 
-def series_points(engine: MetricEngine, defn: MetricDefinition, start: dt.date, end: dt.date) -> dict[uuid.UUID, list[MetricPoint]]:
+def series_points(
+    engine: MetricEngine, defn: MetricDefinition, start: dt.date, end: dt.date
+) -> dict[uuid.UUID, list[MetricPoint]]:
     try:
         computed = engine.points(defn, start, end)
     except (CycleError, MetricError, TransformError) as exc:
@@ -160,8 +162,9 @@ def apply_metric_fields(m: MetricDefinition, fields: dict[str, Any]) -> None:
         setattr(m, key, value)
 
 
-def validate_definition(db: Session, org_id: uuid.UUID, slug: str, source: str, transform: str,
-                        params: dict[str, Any], check_source: bool) -> None:
+def validate_definition(
+    db: Session, org_id: uuid.UUID, slug: str, source: str, transform: str, params: dict[str, Any], check_source: bool
+) -> None:
     from app.metrics.engine import check_cycles, validate_source
     from app.metrics.transforms import validate_params
 

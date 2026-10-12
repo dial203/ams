@@ -1,7 +1,7 @@
 """HTTP client for the Open Wearables REST API (server-to-server, ``X-Open-Wearables-API-Key``).
 
 Every failure surfaces as :class:`OpenWearablesError` (the API answers 502); a missing
-configuration as :class:`OpenWearablesNotConfigured` (503).
+configuration as :class:`OpenWearablesNotConfiguredError` (503).
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from app.config import Settings, settings
 from app.integrations.open_wearables.errors import (
-    OpenWearablesConflict,
+    OpenWearablesConflictError,
     OpenWearablesError,
-    OpenWearablesNotConfigured,
+    OpenWearablesNotConfiguredError,
 )
 from app.integrations.open_wearables.schemas import (
     OWActivitySummary,
@@ -69,7 +69,7 @@ class OpenWearablesClient:
     def from_settings(cls, cfg: Settings | None = None) -> OpenWearablesClient:
         cfg = cfg or settings
         if not cfg.ow_configured:
-            raise OpenWearablesNotConfigured("Open Wearables is not configured (OW_BASE_URL / OW_API_KEY)")
+            raise OpenWearablesNotConfiguredError("Open Wearables is not configured (OW_BASE_URL / OW_API_KEY)")
         return cls(
             cfg.ow_base_url or "",
             cfg.ow_api_key,
@@ -109,7 +109,7 @@ class OpenWearablesClient:
             detail = _detail(resp)
             log.warning("OW %s %s -> %s %s", method, path, resp.status_code, detail)
             if resp.status_code == 409:
-                raise OpenWearablesConflict(detail, resp.status_code)
+                raise OpenWearablesConflictError(detail, resp.status_code)
             raise OpenWearablesError(f"{method} {path} returned {resp.status_code}: {detail}", resp.status_code)
         if resp.status_code == 204 or not resp.content:
             return None
@@ -123,7 +123,9 @@ class OpenWearablesClient:
         try:
             return model.model_validate(data)
         except ValidationError as exc:
-            raise OpenWearablesError(f"unexpected response shape for {model.__name__}: {exc.error_count()} errors") from exc
+            raise OpenWearablesError(
+                f"unexpected response shape for {model.__name__}: {exc.error_count()} errors"
+            ) from exc
 
     @staticmethod
     def _parse_list(model: type[M], data: Any) -> list[M]:
@@ -155,7 +157,9 @@ class OpenWearablesClient:
             "email": email,
             "external_user_id": external_user_id,
         }
-        return self._parse(OWUser, self._request("POST", "/users", json={k: v for k, v in body.items() if v is not None}))
+        return self._parse(
+            OWUser, self._request("POST", "/users", json={k: v for k, v in body.items() if v is not None})
+        )
 
     # ------------------------------------------------------------------ providers / connections
     def list_providers(self, enabled_only: bool = True) -> list[OWProvider]:
@@ -187,7 +191,7 @@ class OpenWearablesClient:
 
     def create_sdk_token(self, user_id: uuid.UUID) -> OWToken:
         if not (self.app_id and self.app_secret):
-            raise OpenWearablesNotConfigured("OW_APP_ID / OW_APP_SECRET are not configured")
+            raise OpenWearablesNotConfiguredError("OW_APP_ID / OW_APP_SECRET are not configured")
         data = self._request(
             "POST",
             f"/users/{user_id}/token",

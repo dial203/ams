@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.integrations.open_wearables.errors import OpenWearablesError, OpenWearablesNotConfigured
+from app.integrations.open_wearables.errors import OpenWearablesError, OpenWearablesNotConfiguredError
 from app.routes import (
     athlete_self,
     athletes,
@@ -57,8 +57,8 @@ def create_app() -> FastAPI:
         expose_headers=["Content-Disposition"],
     )
 
-    @app.exception_handler(OpenWearablesNotConfigured)
-    async def _ow_not_configured(_: Request, exc: OpenWearablesNotConfigured) -> JSONResponse:
+    @app.exception_handler(OpenWearablesNotConfiguredError)
+    async def _ow_not_configured(_: Request, exc: OpenWearablesNotConfiguredError) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
     @app.exception_handler(OpenWearablesError)

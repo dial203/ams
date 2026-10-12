@@ -32,7 +32,9 @@ def full_name(athlete: Athlete) -> str:
     return f"{athlete.first_name} {athlete.last_name}".strip()
 
 
-def current_group_ids(db: Session, athlete_ids: Iterable[uuid.UUID], today: dt.date) -> dict[uuid.UUID, list[uuid.UUID]]:
+def current_group_ids(
+    db: Session, athlete_ids: Iterable[uuid.UUID], today: dt.date
+) -> dict[uuid.UUID, list[uuid.UUID]]:
     ids = list(athlete_ids)
     out: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
     if not ids:
@@ -153,7 +155,9 @@ def groups_out(db: Session, p: Principal, groups: list[Group]) -> list[GroupOut]
     return [group_out(g, counts.get(g.id, 0)) for g in groups]
 
 
-def add_to_group(db: Session, org_id: uuid.UUID, athlete_id: uuid.UUID, group_id: uuid.UUID, joined_on: dt.date) -> bool:
+def add_to_group(
+    db: Session, org_id: uuid.UUID, athlete_id: uuid.UUID, group_id: uuid.UUID, joined_on: dt.date
+) -> bool:
     """Add a current membership unless one already exists. Returns True when added."""
     existing = db.scalar(
         select(AthleteGroup.id).where(

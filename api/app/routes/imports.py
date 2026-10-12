@@ -29,9 +29,7 @@ def _writable_form(db: DbSession, p: Principal, form_id: uuid.UUID) -> Form:
 
 
 @router.post("/forms/{form_id}/imports/preview", response_model=ImportPreview)
-def preview(
-    form_id: uuid.UUID, p: PrincipalDep, db: DbSession, file: Annotated[UploadFile, File()]
-) -> ImportPreview:
+def preview(form_id: uuid.UUID, p: PrincipalDep, db: DbSession, file: Annotated[UploadFile, File()]) -> ImportPreview:
     form = _writable_form(db, p, form_id)
     data = file.file.read(svc.MAX_UPLOAD_BYTES + 1)
     result = svc.preview(db, p, form, file.filename or "upload.csv", data)
@@ -74,8 +72,13 @@ def delete_batch(batch_id: uuid.UUID, p: AdminDep, db: DbSession) -> Response:
     )
     batch.deleted_at = now
     audit.record(
-        db, org_id=p.org_id, user_id=p.user_id, action="import.delete", entity_type="import_batch",
-        entity_id=batch.id, details={"submissions_deleted": result.rowcount},  # type: ignore[attr-defined]
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="import.delete",
+        entity_type="import_batch",
+        entity_id=batch.id,
+        details={"submissions_deleted": result.rowcount},  # type: ignore[attr-defined]
     )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

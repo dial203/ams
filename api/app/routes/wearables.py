@@ -15,7 +15,7 @@ from app.database import DbSession
 from app.deps import PrincipalDep, StaffDep
 from app.integrations.open_wearables.client import OpenWearablesClient
 from app.integrations.open_wearables.daily import WEARABLE_METRICS
-from app.integrations.open_wearables.errors import OpenWearablesNotConfigured
+from app.integrations.open_wearables.errors import OpenWearablesNotConfiguredError
 from app.integrations.open_wearables.webhooks import REFRESH_EVENTS, WebhookVerificationError, parse_event, verify
 from app.models import Athlete
 from app.permissions import Principal
@@ -130,7 +130,7 @@ async def _raw_body(request: Request) -> bytes:
 def ow_webhook(request: Request, db: DbSession, body: Annotated[bytes, Depends(_raw_body)]) -> Response:
     secret = settings.ow_webhook_secret
     if not secret:
-        raise OpenWearablesNotConfigured("OW_WEBHOOK_SECRET is not configured")
+        raise OpenWearablesNotConfiguredError("OW_WEBHOOK_SECRET is not configured")
     try:
         verify(secret, {k.lower(): v for k, v in request.headers.items()}, body)
         event = parse_event(body)
