@@ -1,0 +1,35 @@
+{
+  "name": "@ams/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AMS shared TypeScript: API types and client, form schema, expression language and form engine.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./expr": "./src/expr/index.ts",
+    "./forms": "./src/forms/index.ts",
+    "./api": "./src/api/index.ts",
+    "./format": "./src/format/index.ts",
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.12.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^4.1.11"
+  }
+}
