@@ -321,6 +321,8 @@ export type ConnectRequest = {
   account_type?: string | null;
   account_label?: string | null;
   redirect_uri?: string | null;
+  /** true: add another account with this provider beside the linked ones (OW `new_account`). */
+  new_account?: boolean | null;
 };
 export type ConnectResponse = { authorization_url: string };
 
