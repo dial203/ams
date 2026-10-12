@@ -49,4 +49,7 @@ ignore = ["B008", "RUF012"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-filterwarnings = ["ignore::DeprecationWarning:celery.*"]
+filterwarnings = [
+    "ignore::DeprecationWarning:celery.*",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
