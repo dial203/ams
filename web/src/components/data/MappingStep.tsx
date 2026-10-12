@@ -57,7 +57,7 @@ export function MappingStep({
       }}
     >
       <div className="grid gap-4 rounded-lg border p-4 lg:grid-cols-2">
-        <div className="grid gap-3">
+        <div className="grid content-start gap-3">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <UserRound aria-hidden className="size-4 text-muted-foreground" /> Who is each row about?
           </h3>
@@ -93,7 +93,7 @@ export function MappingStep({
             </p>
           )}
         </div>
-        <div className="grid gap-3">
+        <div className="grid content-start gap-3">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <CalendarDays aria-hidden className="size-4 text-muted-foreground" /> Which day?
           </h3>

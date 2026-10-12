@@ -5,7 +5,7 @@
  * localStorage. This is a known trade-off (any XSS can read both): replace the refresh
  * token storage with an httpOnly, SameSite cookie set by the API when that lands.
  */
-import { createApiClient, type ApiClient, type TokenPair } from "@ams/shared";
+import { createApiClient, isApiError, type ApiClient, type TokenPair } from "@ams/shared";
 import { storage } from "@/lib/storage";
 
 const ACCESS_KEY = "ams.access_token";
@@ -70,6 +70,24 @@ export function createTokenStore(now: () => number = Date.now): TokenStore {
   };
 }
 
+/**
+ * Exchanges the stored refresh token for a new pair (rotation) and stores it.
+ * Resolves `false` when the server rejects the refresh token (400/401/403: sign out);
+ * throws on transient failures (network, 5xx) so the caller keeps the session.
+ */
+export async function refreshTokens(client: ApiClient, store: TokenStore): Promise<boolean> {
+  const refreshToken = store.getRefreshToken();
+  if (!refreshToken) return false;
+  try {
+    const pair = await client.auth.refresh(refreshToken);
+    store.setPair(pair);
+    return true;
+  } catch (e) {
+    if (isApiError(e) && (e.status === 400 || e.status === 401 || e.status === 403)) return false;
+    throw e;
+  }
+}
+
 export interface AuthedClientOptions {
   baseUrl: string;
   store: TokenStore;
@@ -88,13 +106,7 @@ export function createAuthedApiClient({ baseUrl, store, fetch: fetchImpl, onLogo
     baseUrl,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
     getAccessToken: () => store.getAccessToken(),
-    async refresh() {
-      const refreshToken = store.getRefreshToken();
-      if (!refreshToken) return false;
-      const pair = await client.auth.refresh(refreshToken);
-      store.setPair(pair);
-      return true;
-    },
+    refresh: () => refreshTokens(client, store),
     onAuthFailure() {
       if (store.isAuthenticated()) store.clear();
       onLogout?.();

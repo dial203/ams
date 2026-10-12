@@ -286,7 +286,7 @@ export function TeamGrid({ form, schema, athletes, date, existing, onSave, onOpe
               <th
                 role="columnheader"
                 scope="col"
-                className="sticky top-0 z-20 w-28 border-b bg-muted px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
+                className="sticky top-0 z-20 min-w-32 border-b bg-muted px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
               >
                 Status
               </th>
@@ -513,7 +513,7 @@ const GridRow = memo(function GridRow({
         );
         return cell;
       })}
-      <td className="border-b border-l px-2">{status}</td>
+      <td className="border-b border-l px-2 pr-3 whitespace-nowrap">{status}</td>
     </tr>
   );
 });

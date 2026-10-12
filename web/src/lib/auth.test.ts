@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAuthedApiClient, createTokenStore } from "@/lib/auth";
+import { createApiClient } from "@ams/shared";
+import { createAuthedApiClient, createTokenStore, refreshTokens } from "@/lib/auth";
 import { apiBaseUrl } from "@/lib/config";
 
 const BASE = "http://api.test/api/v1";
@@ -85,6 +86,29 @@ describe("authed API client", () => {
     const api = createAuthedApiClient({ baseUrl: BASE, store, fetch: fetchMock as unknown as typeof fetch });
     await expect(api.me.get()).resolves.toEqual(me);
     expect(store.getAccessToken()).toBe("fresh");
+  });
+
+  it("refreshTokens: false when the server rejects the token, throws on transient failures", async () => {
+    const store = createTokenStore();
+    store.setPair({ access_token: "a", refresh_token: "r", expires_in: 60 });
+    const rejecting = createApiClient({ baseUrl: BASE, getAccessToken: () => null, fetch: (async () => json(401, { detail: "revoked" })) as unknown as typeof fetch });
+    await expect(refreshTokens(rejecting, store)).resolves.toBe(false);
+    const bad = createApiClient({ baseUrl: BASE, getAccessToken: () => null, fetch: (async () => json(400, { detail: "invalid" })) as unknown as typeof fetch });
+    await expect(refreshTokens(bad, store)).resolves.toBe(false);
+    const offline = createApiClient({
+      baseUrl: BASE,
+      getAccessToken: () => null,
+      fetch: (async () => {
+        throw new TypeError("Failed to fetch");
+      }) as unknown as typeof fetch,
+    });
+    await expect(refreshTokens(offline, store)).rejects.toThrow("Failed to fetch");
+    const down = createApiClient({ baseUrl: BASE, getAccessToken: () => null, fetch: (async () => json(503, { detail: "down" })) as unknown as typeof fetch });
+    await expect(refreshTokens(down, store)).rejects.toMatchObject({ status: 503 });
+    // the stored pair is untouched by failed refreshes
+    expect(store.getRefreshToken()).toBe("r");
+    store.clear();
+    await expect(refreshTokens(rejecting, store)).resolves.toBe(false);
   });
 
   it("builds the /api/v1 base URL from VITE_API_URL", () => {

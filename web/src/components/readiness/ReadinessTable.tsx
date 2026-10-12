@@ -239,7 +239,9 @@ export function SummaryStrip({
               <span className={cn("text-lg font-semibold tabular", t.value > 0 && t.tone)} data-testid={`summary-${t.key}`}>
                 {t.value}
               </span>
-              <span className="truncate text-[11px] text-muted-foreground">{t.hint}</span>
+              <span className="hidden truncate text-[11px] text-muted-foreground xl:inline" title={t.hint}>
+                {t.hint}
+              </span>
             </div>
           </button>
         );
