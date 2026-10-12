@@ -195,6 +195,18 @@ point (UTF-16 code unit order is acceptable; spec cases use ASCII).
 Arity: `round` 1–2, `pow` 2, `clamp` 3, `if` 3, `contains` 2, `len` 1, single-argument
 math functions 1, `coalesce` ≥ 1, aggregates ≥ 1.
 
+### Clarifications (pinned by spec cases)
+
+- Null propagation is checked before types: `null + 'a'` is `null`, not a type error.
+- `round(null, d)` is `null`; a `null` or non-integer `d` with a non-null `x` is a type error.
+- `clamp` ignores a `null` bound (`clamp(15, null, 10) = 10`); a list argument is a type error.
+- `-0` results are normalised to `0`.
+- A bare function name (`sum`) is an identifier, not a call; it never resolves, so it is an
+  evaluation error and an unknown reference in schema validation.
+- Escapes other than `\" \' \\ \n \t` are parse errors.
+- `len` and `max_length` count Unicode code points; strings order by code point.
+- `visible_if: ""` is a parse error (schema validation reports it; evaluation hides the field).
+
 ## Form evaluation
 
 `evaluate(schema, values) -> { visible, computed, values }` is defined by this algorithm
