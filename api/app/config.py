@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     ams_secret_key: str = Field("", description="HS256 signing key for access tokens; at least 32 characters")
     cors_origins: str = "http://localhost:3001,http://localhost:5173"
-    web_base_url: str = "http://localhost:5173"
+    web_base_url: str = "http://localhost:3001"
 
     access_token_minutes: int = 30
     refresh_token_days: int = 30
