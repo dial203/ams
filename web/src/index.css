@@ -163,6 +163,13 @@
 }
 
 @layer utilities {
+  /* Full viewport height minus the demo build's banner (--demo-banner-h is unset otherwise). */
+  .h-viewport {
+    height: calc(100dvh - var(--demo-banner-h, 0px));
+  }
+  .min-h-viewport {
+    min-height: calc(100dvh - var(--demo-banner-h, 0px));
+  }
   .tabular {
     font-variant-numeric: tabular-nums;
   }

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function AuthLayout({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid min-h-dvh lg:grid-cols-[1fr_minmax(420px,40%)]">
+    <div className="grid min-h-viewport lg:grid-cols-[1fr_minmax(420px,40%)]">
       <div className="relative hidden overflow-hidden bg-zinc-950 text-zinc-100 lg:flex lg:flex-col lg:justify-between lg:p-10">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <span className="flex size-7 items-center justify-center rounded-md bg-white text-xs font-bold text-zinc-950">A</span>

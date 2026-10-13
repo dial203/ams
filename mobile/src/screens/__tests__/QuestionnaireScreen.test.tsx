@@ -1,3 +1,4 @@
+import { todayInTimeZone } from "@ams/shared";
 import { fireEvent, screen, within } from "@testing-library/react-native";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { athlete, makeDueForm, makeSubmission, SPEC } from "../../test/fixtures";
@@ -39,6 +40,8 @@ describe("QuestionnaireScreen", () => {
       routes: routes({
         status: 201,
         body: makeSubmission("f1", {
+          // the success copy compares local_date with today in the org's zone (UTC in the fixtures)
+          local_date: todayInTimeZone("UTC"),
           values: { session_type: "field", rpe: 5, duration: 60 },
           computed: { srpe: 300, load_band: "moderate", duration_h: 1, duration_back: 60 },
         }),

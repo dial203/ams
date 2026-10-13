@@ -93,7 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background">
+    <div className="flex h-viewport overflow-hidden bg-background">
       {!isMobile && (
         <aside
           className={cn(

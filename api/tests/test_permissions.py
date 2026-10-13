@@ -433,6 +433,18 @@ def test_audit_endpoint(client: TestClient, world: World) -> None:
     assert entry["user_id"] == str(admin.id)
 
 
+def test_member_list_hides_athletes_from_non_admin_staff(client: TestClient, world: World) -> None:
+    """An athlete's membership carries their name; de-identified staff must not see it."""
+    url = f"{API}/orgs/{world.org.id}/members"
+    athlete_id = str(world.actors["athlete"].id)
+    for name in ("researcher", "coach", "viewer"):
+        members = client.get(url, headers=world.actors[name].headers).json()
+        assert all(m["role"] != "athlete" for m in members), name
+        assert athlete_id not in {m["user"]["id"] for m in members}, name
+    admin_view = client.get(url, headers=world.actors["admin"].headers).json()
+    assert athlete_id in {m["user"]["id"] for m in admin_view}
+
+
 def test_member_role_rules(client: TestClient, world: World) -> None:
     url = f"{API}/orgs/{world.org.id}/members"
     owner, admin = world.actors["owner"], world.actors["admin"]

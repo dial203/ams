@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -123,6 +124,22 @@ def seed_demo_cmd(
     typer.echo(f"seeded {org.name} ({org.id})")
     typer.echo("logins: admin@example.com (owner), coach@example.com, medic@example.com,")
     typer.echo("        researcher@example.com (blinded), athlete@example.com (athlete A-0001)")
+
+
+@cli.command("export-demo")
+def export_demo_cmd(
+    out: Annotated[Path, typer.Option(help="Directory for the <role>.json files (created if missing)")],
+) -> None:
+    """Write the web demo fixtures (one JSON file per demo login) from a seed-demo database."""
+    from app.demo_export import DemoNotSeededError, export_demo
+
+    try:
+        paths = export_demo(out)
+    except DemoNotSeededError as exc:
+        typer.echo(f"refusing: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    for path in paths:
+        typer.echo(f"{path} {path.stat().st_size / 1024:.0f} KiB")
 
 
 def main() -> None:

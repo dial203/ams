@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useApi } from "@/lib/api-context";
+import { useDemoMode } from "@/lib/demo-mode";
 import { toastError } from "@/lib/errors";
 import { formatNumber } from "@/lib/field-format";
 import { sameJson } from "@/lib/json";
@@ -426,6 +427,7 @@ function PreviewCard({ metric, dirty, onSave, saving, canSave }: { metric: Metri
     enabled: !!metric && !!athleteId,
   });
   const values = series.data?.points.filter((p) => p.value !== null).length ?? 0;
+  const demo = useDemoMode();
   return (
     <Card>
       <CardHeader>
@@ -463,6 +465,7 @@ function PreviewCard({ metric, dirty, onSave, saving, canSave }: { metric: Metri
                 <MetricChart metric={series.data.metric} points={series.data.points} height={220} />
                 <p className="text-xs text-muted-foreground">
                   {values} of {series.data.points.length} days have a value.
+                  {demo && values === 0 && " The demo serves the series the API computed when it was built; metrics created or redefined here are not computed."}
                 </p>
               </>
             )}

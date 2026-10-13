@@ -255,7 +255,7 @@ type AuditEntry = { id: UUID; user_id: UUID | null; action: string; entity_type:
 |---|---|---|---|
 | GET | `/orgs/{org_id}` | → `Organization` | member |
 | PATCH | `/orgs/{org_id}` | `{name?, timezone?, settings?}` → `Organization` | admin |
-| GET | `/orgs/{org_id}/members` | → `Member[]` | admin, staff (read) |
+| GET | `/orgs/{org_id}/members` | → `Member[]` | admin: everyone; other staff: staff members only (an athlete's membership would unmask them; athletes are listed via `/athletes`) |
 | PATCH | `/orgs/{org_id}/members/{user_id}` | `{role}` → `Member` | admin; cannot demote the last owner (409); only an owner grants or revokes `owner` |
 | DELETE | `/orgs/{org_id}/members/{user_id}` | → 204 | admin |
 | GET | `/orgs/{org_id}/invitations` | → `Invitation[]` (pending) | admin |

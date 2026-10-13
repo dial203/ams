@@ -16,6 +16,22 @@ ingestion, storage and integration backend.
 | [docs/FORMS.md](docs/FORMS.md) | Form schema and expression language |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What's built and what's next |
 
+## Live demo
+
+**[dial203.github.io/ams](https://dial203.github.io/ams/)**: the staff web app running entirely in
+the browser on the API's synthetic `seed-demo` organization. Pick a role (owner, coach, medical,
+blinded researcher, athlete) to see what that login sees. Nothing you enter leaves the tab: changes
+reset on reload, and new entries do not recompute metrics.
+
+The `Demo (GitHub Pages)` workflow rebuilds it on every push to `main`: the API seeds a throwaway
+database and `export-demo` writes each role's real API responses to JSON, which an in-browser fake
+API (`web/src/demo`) serves. To build it locally (needs an empty Postgres database):
+
+```bash
+DATABASE_URL=postgresql+psycopg://postgres@localhost:5432/ams_demo scripts/build-demo.sh
+pnpm --filter @ams/web exec vite preview --base /ams/     # http://localhost:4173/ams/
+```
+
 ## Layout
 
 ```

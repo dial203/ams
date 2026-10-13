@@ -31,7 +31,7 @@ function AppGate() {
   if (me.isPending) return <FullPageSpinner />;
   if (me.isError) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
+      <div className="flex min-h-viewport items-center justify-center">
         <ErrorState error={me.error} title="Could not load your account" onRetry={() => void me.refetch()} />
       </div>
     );

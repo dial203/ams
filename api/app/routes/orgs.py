@@ -63,9 +63,13 @@ def update_org(body: OrganizationUpdate, p: AdminDep, db: DbSession) -> Organiza
 
 @router.get("/members", response_model=list[MemberOut])
 def list_members(p: StaffDep, db: DbSession) -> list[MemberOut]:
-    members = db.scalars(
-        select(OrgMembership).where(OrgMembership.org_id == p.org_id).order_by(OrgMembership.created_at)
-    ).all()
+    """Admins see every membership. Other staff see staff only: an athlete's membership carries
+    their name and athlete_id, which would unmask them to de-identified staff; athletes are
+    listed through /athletes, which applies the caller's masking."""
+    query = select(OrgMembership).where(OrgMembership.org_id == p.org_id)
+    if not p.is_admin:
+        query = query.where(OrgMembership.role != "athlete")
+    members = db.scalars(query.order_by(OrgMembership.created_at)).all()
     return [member_out(db, m) for m in members]
 
 
