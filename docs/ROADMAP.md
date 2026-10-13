@@ -23,7 +23,7 @@ Known gaps in the slice:
 - Invitation emails are not sent; the invite link is logged and shown in the web app to copy.
 - Apple Health / Health Connect sync is wired through an adapter but has not run on a device:
   the Open Wearables React Native SDK is not on npm yet (see `mobile/README.md`).
-- The Docker images have not been built end to end in the environment this was written in (its proxy blocks package downloads inside builds); the compose file, the nginx `/api` proxy and the first-start bootstrap were each tested separately.
+- Docker images are built and published by GitHub Actions (`images.yml`); the compose file, the nginx `/api` proxy and the first-start bootstrap were also tested separately.
 - Web keeps the refresh token in `localStorage`; move it to an httpOnly cookie before
   production use with medical data.
 - No athlete-facing endpoint to disconnect a cloud wearable; `ImportBatch` has no status, so

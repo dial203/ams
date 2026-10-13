@@ -108,7 +108,8 @@ role, serving `dist` under `/ams/` and at `/`; it writes screenshots to `e2e-dem
 
 ## Docker
 
-`docker compose up web` (repo root) builds `web/Dockerfile`: a static build served by
+`web/Dockerfile` (published as `ghcr.io/dial203/ams-web`; build it locally with the
+`docker-compose.build.yml` overlay) is a static build served by
 nginx with SPA fallback, which also forwards `/api/` to the `api` service. `VITE_API_URL` is a
 build argument; its default `/` means "same origin" (`apiBaseUrl` turns it into `/api/v1`), so
 the image needs no API address. Pass an absolute URL only when the API lives elsewhere.
