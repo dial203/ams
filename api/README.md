@@ -54,6 +54,7 @@ Other CLI commands:
 uv run python -m app.cli create-org --name "Unit 7" --timezone Europe/Berlin    # prints id and slug
 uv run python -m app.cli create-admin --email boss@example.com --org unit-7      # owner if none yet, else admin
 uv run python -m app.cli create-user --email coach@example.com --org unit-7 --role staff
+uv run python -m app.cli export-demo --out ../web/public/demo                     # web demo fixtures (after seed-demo)
 ```
 
 ## Tests
