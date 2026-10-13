@@ -1,0 +1,71 @@
+name: Demo (GitHub Pages)
+
+# Builds the in-browser demo of the staff web app and deploys it to GitHub Pages:
+# the API seeds a throwaway database, exports one fixture file per demo role, and the web
+# app is built with `--mode demo` (fake API in the browser, hash routing, relative URLs).
+# One-time setup: Settings -> Pages -> Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ams_demo
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/ams_demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Seed the demo database and export the fixtures
+        working-directory: api
+        run: |
+          export AMS_SECRET_KEY="$(openssl rand -hex 32)"
+          uv sync --frozen
+          uv run alembic upgrade head
+          uv run python -m app.cli seed-demo
+          uv run python -m app.cli export-demo --out ../web/public/demo
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the demo
+        run: pnpm --filter @ams/web build:demo
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

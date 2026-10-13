@@ -17,9 +17,11 @@ unless already present. The API must allow the web origin in `CORS_ORIGINS`.
 | Script | |
 |---|---|
 | `dev` / `build` / `preview` | Vite (build runs `tsc` first) |
+| `dev:demo` / `build:demo` | The in-browser demo (below) |
 | `typecheck` / `lint` | `tsc --noEmit`, ESLint |
 | `test` | Vitest + Testing Library (jsdom) |
 | `test:e2e` | Playwright against a running API with the demo seed (below) |
+| `test:e2e-demo` | Playwright against the demo build (below) |
 
 ## Pages
 
@@ -78,6 +80,31 @@ pnpm --filter @ams/web test:e2e          # starts vite on :5173 unless E2E_BASE_
 The suite logs in as `admin@example.com`, walks every page, enters team-grid data, runs an
 import (and rolls it back), publishes a new form, and checks the de-identified researcher
 view. It writes the screenshots in `e2e/screenshots/`.
+
+## Demo build
+
+`pnpm build:demo` (`vite build --mode demo`, or `VITE_DEMO=1`) builds a self-contained demo for
+static hosting (GitHub Pages: [dial203.github.io/ams](https://dial203.github.io/ams/)). It needs the
+fixtures in `public/demo/<role>.json` (git-ignored), written by the API from a `seed-demo` database:
+`uv run python -m app.cli export-demo --out ../web/public/demo`, or all of it with
+`scripts/build-demo.sh` from the repository root. `pnpm dev:demo` runs the same thing with hot reload.
+
+In the demo build `main.tsx` loads `src/demo` (a dynamic import, absent from normal builds) and uses:
+
+- a `fetch` that answers every `/api/v1` call the app makes from an in-memory copy of the logged-in
+  role's fixture: reads with the API's filters and paging, writes applied in memory (forms and
+  publishing with `validateSchema`, submissions with `validateSubmission`, 422/409 like the API, CSV
+  export, CSV import preview/dry run/commit/rollback, groups, athletes, invitations, settings).
+  Permissions come from the fixture (the API's own responses and rights per role). Metric series and
+  readiness boards are the precomputed ones; new entries do not change them. XLSX import, accepting
+  invitations and Open Wearables actions are refused with a clear message; any other endpoint answers
+  501 `Not available in the demo` (and logs a console warning);
+- every date in the fixture moved by (today − export day), so the data always ends this morning;
+- hash routing and relative asset URLs, so one build works at a domain root or under a sub-path;
+- a banner and a sign-in page with one button per role. A reload keeps the role and starts over.
+
+`pnpm test:e2e-demo` (Playwright, `playwright.demo.config.ts`) clicks through the built demo as each
+role, serving `dist` under `/ams/` and at `/`; it writes screenshots to `e2e-demo/screenshots/`.
 
 ## Docker
 
