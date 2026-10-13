@@ -49,12 +49,13 @@ export default defineConfig(
       "src/test/**",
       "**/*.test.{ts,tsx}",
       "e2e/**",
+      "e2e-demo/**",
       "*.config.ts",
     ],
     rules: { "react-refresh/only-export-components": "off" },
   },
   {
-    files: ["*.config.{ts,js}", "e2e/**"],
+    files: ["*.config.{ts,js}", "e2e/**", "e2e-demo/**"],
     languageOptions: { globals: { ...globals.node } },
   },
 );
