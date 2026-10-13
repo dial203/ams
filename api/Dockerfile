@@ -1,5 +1,5 @@
 # AMS API image. The same image runs the API, the Celery worker and Celery beat:
-#   api:    (default CMD) alembic upgrade head, then uvicorn on :8000
+#   api:    (default CMD) alembic upgrade head, bootstrap, then uvicorn on :8000
 #   worker: celery -A app.worker worker --loglevel=INFO
 #   beat:   celery -A app.worker beat --loglevel=INFO --schedule /tmp/celerybeat-schedule
 FROM python:3.13-slim
@@ -31,4 +31,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"
 
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+# bootstrap: optional first-start setup from AMS_SEED_DEMO / AMS_ORG_NAME / AMS_ADMIN_* (app/bootstrap.py)
+CMD ["sh", "-c", "alembic upgrade head && python -m app.cli bootstrap && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]

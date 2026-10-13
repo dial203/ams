@@ -62,7 +62,28 @@ VITE_API_URL=http://localhost:8001 pnpm --filter @ams/web dev
 EXPO_PUBLIC_API_URL=http://<lan-ip>:8001 pnpm --filter @ams/mobile start
 ```
 
-With Docker: `docker compose up -d` (see the header of `docker-compose.yml`).
+## Run with Docker
+
+```bash
+cp .env.example .env        # set AMS_SECRET_KEY (openssl rand -hex 32) and AMS_DB_PASSWORD
+docker compose up -d --build
+```
+
+Open http://localhost:3001. The web container serves the app and forwards `/api` to the API, so
+one port serves everything (API docs at `/api/v1/docs`). Set `AMS_SEED_DEMO=true` for the demo
+organization, or `AMS_ORG_NAME` + `AMS_ADMIN_EMAIL` + `AMS_ADMIN_PASSWORD` for your own; the API
+applies them on start and only ever adds what is missing.
+
+### Deploy with Portainer
+
+**Stacks → Add stack → Repository**, repository `https://github.com/dial203/ams`, reference
+`refs/heads/main`, compose path `docker-compose.yml`. Under **Environment variables** add the
+settings from `.env.example`: at least `AMS_SECRET_KEY`, `AMS_DB_PASSWORD` and `AMS_PUBLIC_URL`
+(the address people will open, e.g. `https://ams.example.org`), plus the first-start variables
+above. Publish `AMS_WEB_PORT` (default 3001) through your reverse proxy. Images are built on the
+Docker host on every deploy (`pull_policy: build`), so enabling Portainer's GitOps updates
+redeploys on each push to `main`. `AMS_DB_PASSWORD` only takes effect when the database volume is
+first created.
 
 Wearables need a running [Open Wearables](https://github.com/dial203/open-wearables) instance:
 set `OW_BASE_URL`, `OW_API_KEY`, and for phone health-store sync `OW_APP_ID` / `OW_APP_SECRET`,

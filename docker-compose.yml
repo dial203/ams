@@ -1,26 +1,53 @@
-# Local development stack for AMS. Open Wearables runs from its own repository
-# (dial203/open-wearables) with its own compose file; point OW_BASE_URL at it.
-# On the same machine, the default http://host.docker.internal:8000 reaches OW's API.
+# AMS stack: Postgres, Redis, API, Celery worker + beat, and the web app (nginx), which serves
+# the UI and forwards /api to the API, so one port serves everything.
 #
-#   cp api/.env.example api/.env      # set OW_API_KEY etc.
-#   docker compose up -d
-#   docker compose exec api python -m app.cli seed-demo
+# Settings are compose variables, not files: put them in a `.env` file next to this one (copy
+# `.env.example`), or enter them as environment variables in Portainer. Only AMS_SECRET_KEY is
+# required; see .env.example for the rest.
 #
-# Web: http://localhost:3001   API: http://localhost:8001/api/v1/docs
+#   cp .env.example .env              # set AMS_SECRET_KEY (and AMS_DB_PASSWORD)
+#   docker compose up -d --build
 #
-# Wearable webhooks: in OW, register an outgoing webhook endpoint at
-#   http://<host reachable from OW>:8001/api/v1/integrations/open-wearables/webhook
-# and put its signing secret (whsec_...) in api/.env as OW_WEBHOOK_SECRET.
+# Web + API: http://localhost:3001   (API docs: http://localhost:3001/api/v1/docs)
+#
+# Wearables: Open Wearables runs separately (dial203/open-wearables). Set OW_BASE_URL and
+# OW_API_KEY; register an OW outgoing webhook at <AMS_PUBLIC_URL>/api/v1/integrations/open-wearables/webhook
+# and put its signing secret (whsec_...) in OW_WEBHOOK_SECRET.
+
+x-api-env: &api_env
+  DATABASE_URL: postgresql+psycopg://ams:${AMS_DB_PASSWORD:-ams}@db:5432/ams
+  REDIS_URL: redis://redis:6379/0
+  AMS_SECRET_KEY: ${AMS_SECRET_KEY:?Set AMS_SECRET_KEY to 32+ random characters, e.g. the output of `openssl rand -hex 32`}
+  # The address people open in a browser; used in invitation links
+  WEB_BASE_URL: ${AMS_PUBLIC_URL:-http://localhost:3001}
+  CORS_ORIGINS: ${AMS_PUBLIC_URL:-http://localhost:3001},http://localhost:5173
+  AMS_UPLOAD_DIR: /data/uploads
+  # Open Wearables (optional; wearable screens say "not set up" until OW_BASE_URL and OW_API_KEY are set)
+  OW_BASE_URL: ${OW_BASE_URL:-}
+  OW_API_KEY: ${OW_API_KEY:-}
+  OW_PUBLIC_BASE_URL: ${OW_PUBLIC_BASE_URL:-}
+  OW_APP_ID: ${OW_APP_ID:-}
+  OW_APP_SECRET: ${OW_APP_SECRET:-}
+  OW_WEBHOOK_SECRET: ${OW_WEBHOOK_SECRET:-}
+  EXPO_PUSH_ENABLED: ${EXPO_PUSH_ENABLED:-false}
+  # First-start setup, applied by the API container on every start and only adding what is missing
+  AMS_SEED_DEMO: ${AMS_SEED_DEMO:-false}
+  AMS_DEMO_PASSWORD: ${AMS_DEMO_PASSWORD:-demo-password-change-me}
+  AMS_ORG_NAME: ${AMS_ORG_NAME:-}
+  AMS_ORG_TIMEZONE: ${AMS_ORG_TIMEZONE:-UTC}
+  AMS_ADMIN_EMAIL: ${AMS_ADMIN_EMAIL:-}
+  AMS_ADMIN_PASSWORD: ${AMS_ADMIN_PASSWORD:-}
+  AMS_ADMIN_NAME: ${AMS_ADMIN_NAME:-}
 
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ams
       POSTGRES_USER: ams
-      POSTGRES_PASSWORD: ams
-    ports:
-      - "${AMS_DB_PORT:-5442}:5432"
+      # Only takes effect when the volume is first created
+      POSTGRES_PASSWORD: ${AMS_DB_PASSWORD:-ams}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ams -d ams"]
       interval: 5s
@@ -31,23 +58,15 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
 
   api:
     build: ./api
-    env_file: ./api/.env
-    environment: &api_env
-      DATABASE_URL: postgresql+psycopg://ams:ams@db:5432/ams
-      REDIS_URL: redis://redis:6379/0
-      OW_BASE_URL: ${OW_BASE_URL:-http://host.docker.internal:8000}
-      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3001}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001,http://localhost:5173}
-      # OW as phones and browsers reach it (SDK tokens, provider icons)
-      OW_PUBLIC_BASE_URL: ${OW_PUBLIC_BASE_URL:-http://localhost:8000}
-      AMS_UPLOAD_DIR: /data/uploads
+    pull_policy: build
+    restart: unless-stopped
+    environment: *api_env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports:
-      - "${AMS_API_PORT:-8001}:8000"
     volumes:
       - ams_uploads:/data/uploads
     depends_on:
@@ -58,8 +77,9 @@ services:
 
   worker:
     build: ./api
+    pull_policy: build
+    restart: unless-stopped
     command: ["celery", "-A", "app.worker", "worker", "--loglevel=INFO"]
-    env_file: ./api/.env
     environment: *api_env
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -71,8 +91,9 @@ services:
 
   beat:
     build: ./api
+    pull_policy: build
+    restart: unless-stopped
     command: ["celery", "-A", "app.worker", "beat", "--loglevel=INFO", "--schedule", "/tmp/celerybeat-schedule"]
-    env_file: ./api/.env
     environment: *api_env
     depends_on:
       - api
@@ -83,7 +104,10 @@ services:
       context: .
       dockerfile: web/Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8001}
+        # "/" = same origin (nginx forwards /api to the api service)
+        VITE_API_URL: ${VITE_API_URL:-/}
+    pull_policy: build
+    restart: unless-stopped
     ports:
       - "${AMS_WEB_PORT:-3001}:80"
     depends_on:

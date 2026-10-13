@@ -99,6 +99,34 @@ def create_admin_cmd(
     _create_user(email, password, full_name, org, "admin" if has_owner else "owner")
 
 
+@cli.command("bootstrap")
+def bootstrap_cmd() -> None:
+    """First-start setup from environment variables (see app/bootstrap.py). Never fails the start."""
+    from app.bootstrap import BootstrapError, bootstrap
+    from app.config import settings
+
+    db = SessionLocal()
+    try:
+        done = bootstrap(
+            db,
+            seed_demo=settings.ams_seed_demo,
+            demo_password=settings.ams_demo_password or DEFAULT_DEMO_PASSWORD,
+            org_name=settings.ams_org_name or None,
+            org_timezone=settings.ams_org_timezone or "UTC",
+            admin_email=settings.ams_admin_email or None,
+            admin_password=settings.ams_admin_password or None,
+            admin_name=settings.ams_admin_name,
+        )
+    except (BootstrapError, ValueError) as exc:
+        db.rollback()
+        typer.echo(f"bootstrap: not applied: {exc}", err=True)
+        return
+    finally:
+        db.close()
+    for line in done:
+        typer.echo(f"bootstrap: {line}")
+
+
 @cli.command("seed-demo")
 def seed_demo_cmd(
     password: Annotated[
