@@ -43,7 +43,8 @@ cp mobile/.env.example mobile/.env
 ```bash
 # mobile/.env
 EXPO_PUBLIC_API_URL=http://192.168.1.20:8001
-# API, e.g. from api/:  uv run uvicorn app.main:app --host 0.0.0.0 --port 8001   (compose already publishes 8001)
+# API, e.g. from api/:  uv run uvicorn app.main:app --host 0.0.0.0 --port 8001
+# With the Docker stack the API is on the web port instead: EXPO_PUBLIC_API_URL=http://192.168.1.20:3001
 ```
 
 Without `EXPO_PUBLIC_API_URL` the app uses the dev server's host on port 8001, which is the

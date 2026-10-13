@@ -115,5 +115,7 @@ describe("authed API client", () => {
     expect(apiBaseUrl(undefined)).toBe("http://localhost:8001/api/v1");
     expect(apiBaseUrl("https://ams.example.org/")).toBe("https://ams.example.org/api/v1");
     expect(apiBaseUrl("https://ams.example.org/api/v1")).toBe("https://ams.example.org/api/v1");
+    // "/" = same origin: the web server forwards /api to the API container
+    expect(apiBaseUrl("/")).toBe("/api/v1");
   });
 });

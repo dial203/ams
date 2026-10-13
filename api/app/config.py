@@ -38,6 +38,14 @@ class Settings(BaseSettings):
 
     celery_task_always_eager: bool = False
     ams_demo_password: str | None = None
+
+    # First-start setup (``python -m app.cli bootstrap``, run by the API container on start)
+    ams_seed_demo: bool = False
+    ams_org_name: str | None = None
+    ams_org_timezone: str = "UTC"
+    ams_admin_email: str | None = None
+    ams_admin_password: str | None = None
+    ams_admin_name: str = ""
     log_level: str = "INFO"
 
     @property

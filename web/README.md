@@ -109,4 +109,6 @@ role, serving `dist` under `/ams/` and at `/`; it writes screenshots to `e2e-dem
 ## Docker
 
 `docker compose up web` (repo root) builds `web/Dockerfile`: a static build served by
-nginx with SPA fallback. `VITE_API_URL` is a build argument.
+nginx with SPA fallback, which also forwards `/api/` to the `api` service. `VITE_API_URL` is a
+build argument; its default `/` means "same origin" (`apiBaseUrl` turns it into `/api/v1`), so
+the image needs no API address. Pass an absolute URL only when the API lives elsewhere.
