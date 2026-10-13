@@ -1,0 +1,21 @@
+# Build the images from this checkout instead of pulling them from ghcr.io:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
+services:
+  api:
+    build: ./api
+    pull_policy: build
+  worker:
+    build: ./api
+    pull_policy: build
+  beat:
+    build: ./api
+    pull_policy: build
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        # "/" = same origin (nginx forwards /api to the api service)
+        VITE_API_URL: ${VITE_API_URL:-/}
+    pull_policy: build
