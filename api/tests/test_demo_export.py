@@ -79,11 +79,8 @@ def test_export_demo_writes_role_correct_fixtures(db: Session, tmp_path: Path) -
     assert all(a["masked"] and a["display_name"] == a["code"] and a["first_name"] is None for a in athletes)
     assert all(not r["identifiable"] for r in researcher["access"]["athletes"].values())
     text = json.dumps(researcher, ensure_ascii=False)
-    # no name of a study participant anywhere in the file
-    assert _mentions(text, _names(PILOT)) == []
-    # nor any athlete's name outside the staff member list (which lists logins, see report)
-    outside_members = json.dumps({k: v for k, v in researcher.items() if k != "members"}, ensure_ascii=False)
-    assert _mentions(outside_members, _names()) == []
+    # no athlete's name anywhere in the file (the member list shows staff only to non-admins)
+    assert _mentions(text, _names()) == []
     board_codes = {r["athlete"]["display_name"] for r in researcher["readiness"]["all"][ANCHOR.isoformat()]["rows"]}
     assert board_codes == PILOT
 
