@@ -51,7 +51,7 @@ export function AthleteHome() {
   };
 
   return (
-    <div className="min-h-dvh bg-muted/30">
+    <div className="min-h-viewport bg-muted/30">
       <header className="flex h-12 items-center gap-3 border-b bg-background px-4">
         <span className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">A</span>
         <span className="text-sm font-semibold">{org.name}</span>
