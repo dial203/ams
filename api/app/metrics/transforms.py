@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -198,6 +199,67 @@ def strain(x: pd.Series, window: int = 7, min_periods: int | None = None) -> pd.
     mp = min_periods if min_periods is not None else window
     total = x.rolling(window, min_periods=min(mp, window)).sum()
     return total * monotony(x, window, min_periods)
+
+
+# ----------------------------------------------------------------------------- data requirements
+
+
+@dataclass(frozen=True)
+class Shortfall:
+    """A data requirement a transform has not met on a day: ``have`` of ``need`` observed days."""
+
+    have: int
+    need: int
+    window: int | None  # days the count is taken over (ending on the day); None = all history
+    same_source: bool  # only days from the day's own provider/device count
+
+
+def shortfall(
+    transform: str, params: Mapping[str, Any], x: pd.Series, sources: pd.Series | None, t: int
+) -> Shortfall | None:
+    """Why ``transform`` is null on day ``t`` (an index position where ``x`` has a value), or None
+    when every data requirement is met (the value may still be null, e.g. a zero SD).
+
+    Mirrors the requirements of the transforms above; a baseline shortfall is reported before a
+    smoothing one because it is the longer wait.
+    """
+    p = dict(params)
+
+    def observed(lo: int, hi: int) -> int:
+        return int(x.iloc[max(lo, 0) : hi + 1].notna().sum())
+
+    def short(have: int, need: int, window: int | None, same_source: bool = False) -> Shortfall | None:
+        return Shortfall(have, need, window, same_source) if have < need else None
+
+    if transform in ("rolling_mean", "rolling_sum", "monotony", "strain"):
+        window = _int(p, "window", 7)
+        mp = p.get("min_periods")
+        default = math.ceil(window * 0.7) if transform == "rolling_mean" else window
+        need = min(default if mp is None else int(mp), window)
+        if transform == "rolling_mean" and _bool(p, "ln", False):
+            x = _log(x)
+        return short(observed(t - window + 1, t), need, window)
+    if transform in ("ewma", "acwr"):
+        if transform == "ewma":
+            need = _int(p, "min_periods", 1)
+        else:
+            mp = p.get("min_periods")
+            need = _int(p, "chronic", 28) if mp is None else int(mp)
+        return short(observed(0, t), need, None)
+    if transform in ("zscore", "pct_change"):
+        baseline = _int(p, "baseline", 28)
+        min_periods = _int(p, "min_periods", 14, minimum=0)
+        y = (_log(x) if transform == "zscore" and _bool(p, "ln", False) else x).to_numpy(dtype=float)
+        src = list(sources) if sources is not None else [None] * len(y)
+        base = len(_same_source_stats(y, src, t, t - baseline, t - 1))
+        need = max(min_periods, 2) if transform == "zscore" else max(min_periods, 1)
+        if base < need:
+            return Shortfall(base, need, baseline, True)
+        if transform == "zscore":
+            smooth = _int(p, "smooth", 1)
+            recent = len(_same_source_stats(y, src, t, t - smooth + 1, t))
+            return short(recent, max(1, math.ceil(smooth * 0.7)), smooth, True)
+    return None
 
 
 # ----------------------------------------------------------------------------- dispatch

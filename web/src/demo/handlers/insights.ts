@@ -42,14 +42,39 @@ function range(ctx: Ctx): [string, string] {
   return [start, end];
 }
 
-/** Latest value on or before `date` within the readiness window, from the precomputed series. */
-function derivedCell(store: DemoStore, slug: string, athleteId: string, date: string): ReadinessCell {
+/**
+ * Latest value on or before `date` within the readiness window, from the precomputed series. The
+ * demo has no raw data to explain an empty cell with, so it reports the metric's last value as
+ * "stale" (or "no_data").
+ */
+function derivedCell(store: DemoStore, metric: MetricDefinition, athleteId: string, date: string): ReadinessCell {
   for (let back = 0; back <= READINESS_WINDOW_DAYS; back++) {
     const d = addDays(date, -back);
-    const p = store.point(slug, athleteId, d);
-    if (p && p[1] !== null) return { value: p[1], flag: p[2], date: p[0] };
+    const p = store.point(metric.slug, athleteId, d);
+    if (p && p[1] !== null) return { value: p[1], flag: p[2], date: p[0], missing: null };
   }
-  return { value: null, flag: null, date: null };
+  let last: string | null = null;
+  for (let d = addDays(date, -READINESS_WINDOW_DAYS - 1); d >= store.fixture.data_start; d = addDays(d, -1)) {
+    const p = store.point(metric.slug, athleteId, d);
+    if (p && p[1] !== null) {
+      last = p[0];
+      break;
+    }
+  }
+  return {
+    value: null,
+    flag: null,
+    date: null,
+    missing: {
+      reason: last ? "stale" : "no_data",
+      source: metric.source,
+      last_date: last,
+      have: null,
+      need: null,
+      window: null,
+      same_source: false,
+    },
+  };
 }
 
 function readiness(ctx: Ctx) {
@@ -74,12 +99,13 @@ function readiness(ctx: Ctx) {
     const cells: Record<string, ReadinessCell> = {};
     for (const m of columns) {
       const fromBoard = store.changedMetrics.has(m.slug) ? undefined : exported?.cells[m.slug];
-      cells[m.slug] = fromBoard ?? derivedCell(store, m.slug, a.id, date);
+      cells[m.slug] = fromBoard ?? derivedCell(store, m, a.id, date);
     }
     return {
       athlete: { id: a.id, display_name: a.display_name, code: a.code, position: a.position },
       cells,
       due_forms: exported?.due_forms ?? 0,
+      scheduled_forms: exported?.scheduled_forms ?? 0,
     };
   });
   return json({ date, group_id: groupId, columns, rows });

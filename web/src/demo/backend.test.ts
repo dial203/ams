@@ -134,8 +134,9 @@ function fixture(opts: { admin?: boolean; masked?: boolean } = {}): DemoFixture 
     rows: [
       {
         athlete: { id: MAYA, display_name: "Maya Okafor", code: "A-0001", position: "100m" },
-        cells: { wellness: { value: 13, flag: "red" as const, date } },
+        cells: { wellness: { value: 13, flag: "red" as const, date, missing: null } },
         due_forms: 1,
+        scheduled_forms: 1,
       },
     ],
   });
@@ -305,14 +306,23 @@ describe("reads", () => {
     const api = backend();
     await api.login();
     const today = (await api.call("GET", o("/dashboards/readiness"), undefined, { query: `date=${DAY}` })).body as {
-      rows: { athlete: { code: string }; cells: Record<string, { value: number | null }>; due_forms: number }[];
+      rows: {
+        athlete: { code: string };
+        cells: Record<string, { value: number | null; missing?: { reason: string } | null }>;
+        due_forms: number;
+        scheduled_forms: number;
+      }[];
     };
     expect(today.rows.map((r) => [r.athlete.code, r.cells.wellness!.value, r.due_forms])).toEqual([
       ["A-0001", 13, 1],
       ["A-0002", null, 0],
     ]);
     const older = (await api.call("GET", o("/dashboards/readiness"), undefined, { query: "date=2026-10-10" })).body as typeof today;
-    expect(older.rows[0]!.cells.wellness).toEqual({ value: 9, flag: "green", date: "2026-10-10" });
+    expect(older.rows[0]!.cells.wellness).toEqual({ value: 9, flag: "green", date: "2026-10-10", missing: null });
+    // athletes without an exported row: the demo can only say there is no value
+    const leo = today.rows[1]!;
+    expect(leo.cells.wellness!.missing?.reason).toBe("no_data");
+    expect([today.rows[0]!.scheduled_forms, leo.scheduled_forms]).toEqual([1, 0]);
     // a group this login cannot list (a filter remembered from another role) filters by membership
     const sprints = (await api.call("GET", o("/dashboards/readiness"), undefined, { query: `group_id=${TEAM}` })).body as typeof today;
     expect(sprints.rows).toHaveLength(2);

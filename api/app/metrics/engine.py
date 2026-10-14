@@ -131,6 +131,7 @@ class MetricEngine:
         self.athlete_ids = list(dict.fromkeys(athlete_ids))
         self._defs: dict[str, MetricDefinition] | None = None
         self._memo: dict[tuple[str, dt.date | None, dt.date], dict[uuid.UUID, Series]] = {}
+        self._inputs: dict[tuple[str, dt.date | None, dt.date], dict[uuid.UUID, Series]] = {}
 
     # ------------------------------------------------------------------ definitions
     @property
@@ -314,9 +315,7 @@ class MetricEngine:
         key = (defn.slug, start, end)
         if key in self._memo:
             return self._memo[key]
-        lb = self.lookback(defn, stack)
-        hist_start = None if (start is None or lb is None) else start - dt.timedelta(days=lb)
-        base = self._base(defn, hist_start, end, (*stack, defn.slug))
+        base = self.inputs(defn, start, end, stack)
         out: dict[uuid.UUID, Series] = {}
         for aid, s in base.items():
             if s.values.empty:
@@ -332,6 +331,20 @@ class MetricEngine:
             out[aid] = Series(values.astype(float), labels)
         self._memo[key] = out
         return out
+
+    def inputs(
+        self, defn: MetricDefinition, start: dt.date | None, end: dt.date, stack: tuple[str, ...] = ()
+    ) -> dict[uuid.UUID, Series]:
+        """The daily series ``transform`` is applied to: from the history ``series`` needs before
+        ``start`` through ``end``."""
+        if defn.slug in stack:
+            raise CycleError(f"circular metric reference: {' -> '.join([*stack, defn.slug])}")
+        key = (defn.slug, start, end)
+        if key not in self._inputs:
+            lb = self.lookback(defn, stack)
+            hist_start = None if (start is None or lb is None) else start - dt.timedelta(days=lb)
+            self._inputs[key] = self._base(defn, hist_start, end, (*stack, defn.slug))
+        return self._inputs[key]
 
     def points(self, defn: MetricDefinition, start: dt.date, end: dt.date) -> dict[uuid.UUID, list[PointOut]]:
         """Rounded points for every day in [start, end] with flags and source labels."""
@@ -367,6 +380,60 @@ class MetricEngine:
         if ref.kind == "metric" and ref.name in self.definitions and defn.slug not in stack:
             return self.is_wearable_based(self.definitions[ref.name], (*stack, defn.slug))
         return False
+
+    def leaf(self, defn: MetricDefinition, stack: tuple[str, ...] = ()) -> SeriesRef:
+        """The form or wearable source at the end of the metric's ``metric:`` chain (or the first
+        ``metric:`` reference that names no definition)."""
+        if defn.slug in stack:
+            raise CycleError(f"circular metric reference: {' -> '.join([*stack, defn.slug])}")
+        ref = parse_ref(defn.source)
+        if ref.kind == "metric" and ref.name in self.definitions:
+            return self.leaf(self.definitions[ref.name], (*stack, defn.slug))
+        return ref
+
+    def source_exists(self, ref: SeriesRef) -> bool:
+        if ref.kind == "wearable":
+            return ref.name in WEARABLE_METRICS
+        if ref.kind == "form":
+            return self.db.scalar(select(Form.id).where(Form.org_id == self.org_id, Form.slug == ref.name)) is not None
+        return ref.name in self.definitions
+
+    def last_observed(self, ref: SeriesRef, end: dt.date) -> dict[uuid.UUID, dt.date]:
+        """Last day on or before ``end`` each athlete has data for a form or wearable source."""
+        if not self.athlete_ids:
+            return {}
+        if ref.kind == "wearable":
+            q = (
+                select(WearableDaily.athlete_id, func.max(WearableDaily.local_date))
+                .where(
+                    WearableDaily.athlete_id.in_(self.athlete_ids),
+                    WearableDaily.metric == ref.name,
+                    WearableDaily.local_date <= end,
+                )
+                .group_by(WearableDaily.athlete_id)
+            )
+        elif ref.kind == "form":
+            key = ref.field or ""
+            numeric_types = ("number", "boolean")
+            q = (
+                select(Submission.athlete_id, func.max(Submission.local_date))
+                .join(Form, Form.id == Submission.form_id)
+                .where(
+                    Form.org_id == self.org_id,
+                    Form.slug == ref.name,
+                    Submission.athlete_id.in_(self.athlete_ids),
+                    Submission.deleted_at.is_(None),
+                    Submission.local_date <= end,
+                    or_(
+                        func.jsonb_typeof(Submission.values[key]).in_(numeric_types),
+                        func.jsonb_typeof(Submission.computed[key]).in_(numeric_types),
+                    ),
+                )
+                .group_by(Submission.athlete_id)
+            )
+        else:
+            return {}
+        return {row[0]: row[1] for row in self.db.execute(q)}
 
 
 # ----------------------------------------------------------------------------- validation

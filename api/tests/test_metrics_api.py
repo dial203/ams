@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -294,19 +295,36 @@ def test_readiness_board_and_due_forms(client: TestClient, db: Session) -> None:
     assert [c["slug"] for c in board["columns"]] == ["wellness_hooper", "hrv_z", "rhr_z", "sleep_duration", "acwr"]
     rows = {row["athlete"]["code"]: row for row in board["rows"]}
     assert set(rows) == {"R-1", "R-2", "R-3"}
-    assert rows["R-1"]["cells"]["wellness_hooper"] == {"value": 8, "flag": "green", "date": board_day.isoformat()}
+    assert rows["R-1"]["cells"]["wellness_hooper"] == {
+        "value": 8,
+        "flag": "green",
+        "date": board_day.isoformat(),
+        "missing": None,
+    }
     assert rows["R-2"]["cells"]["wellness_hooper"] == {
         "value": 23,
         "flag": "red",
         "date": (board_day - dt.timedelta(days=2)).isoformat(),
+        "missing": None,
     }
-    # older than 3 days -> empty cell
-    assert rows["R-3"]["cells"]["wellness_hooper"] == {"value": None, "flag": None, "date": None}
+    # older than 3 days -> empty cell that says when the last value was
+    stale = rows["R-3"]["cells"]["wellness_hooper"]
+    assert (stale["value"], stale["flag"], stale["date"]) == (None, None, None)
+    assert stale["missing"] == {
+        "reason": "stale",
+        "source": "form:wellness_hooper.hooper_total",
+        "last_date": (board_day - dt.timedelta(days=5)).isoformat(),
+        "have": None,
+        "need": None,
+        "window": None,
+        "same_source": False,
+    }
     assert rows["R-2"]["cells"]["sleep_duration"]["flag"] == "red"
     assert rows["R-1"]["cells"]["sleep_duration"]["value"] == 480
     assert rows["R-1"]["cells"]["acwr"]["value"] is None
     # due forms: R-1 submitted today; R-2 has not; R-3 is not in a scheduled group
     assert (rows["R-1"]["due_forms"], rows["R-2"]["due_forms"], rows["R-3"]["due_forms"]) == (0, 1, 0)
+    assert [rows[c]["scheduled_forms"] for c in ("R-1", "R-2", "R-3")] == [1, 1, 0]
     assert rows["R-1"]["athlete"]["position"] == "Mid"
     # group filter (descendants included) and masking for blinded staff
     r = client.get(
@@ -321,3 +339,136 @@ def test_readiness_board_and_due_forms(client: TestClient, db: Session) -> None:
     rows = r.json()["rows"]
     assert [row["athlete"]["display_name"] for row in rows] == ["R-1"]
     assert rows[0]["cells"]["wellness_hooper"]["value"] == 8
+
+
+def _missing(board: dict, code: str, slug: str) -> dict | None:
+    row = next(r for r in board["rows"] if r["athlete"]["code"] == code)
+    cell = row["cells"][slug]
+    assert cell["value"] is None or cell["missing"] is None
+    return cell["missing"]
+
+
+def test_readiness_explains_empty_cells(client: TestClient, db: Session) -> None:
+    org = f.org(db)
+    admin = f.member(db, org, "admin")
+    board_day = day(80)
+    srpe = f.template_form(db, org, "session_rpe")  # no wellness form: that column has no source
+    f.athlete(db, org, code="M-1")  # never linked a wearable
+    sleep_only = f.athlete(db, org, code="M-2")
+    new_device = f.athlete(db, org, code="M-3")
+    switched = f.athlete(db, org, code="M-4")
+    flat = f.athlete(db, org, code="M-5")
+    for a in (sleep_only, new_device, switched, flat):
+        a.ow_user_id = uuid.uuid4()
+    db.commit()
+    f.wearable(db, sleep_only, board_day, "sleep_duration_min", 400, unit="min")
+    f.wearable(db, sleep_only, board_day - dt.timedelta(days=9), "resting_hr_bpm", 50, unit="bpm")
+    for n in range(9):  # 9 days on one device: the baseline has 8 of the 21 days it needs
+        f.wearable(db, new_device, board_day - dt.timedelta(days=n), "hrv_rmssd_ms", 60 + n)
+        f.wearable(db, new_device, board_day - dt.timedelta(days=n), "resting_hr_bpm", 50 + n % 3, unit="bpm")
+    for n in range(40):  # 34 days on the old device, then 6 on a new one: the baseline restarts
+        device = "Oura Ring 4" if n < 6 else "Oura Ring Gen3"
+        f.wearable(db, switched, board_day - dt.timedelta(days=n), "hrv_rmssd_ms", 60 + n % 5, device=device)
+    for n in range(20):  # identical resting HR every day: SD 0, so no z-score
+        f.wearable(db, flat, board_day - dt.timedelta(days=n), "resting_hr_bpm", 48, unit="bpm")
+    for n in range(10):  # 10 sessions; the EWMA ACWR needs 28 days
+        session = {"session_type": "field", "rpe": 5, "duration": 60}
+        f.submit(db, org, srpe, flat, session, board_day - dt.timedelta(days=n))
+
+    r = client.get(
+        f"{API}/orgs/{org.id}/dashboards/readiness", headers=admin.headers, params={"date": board_day.isoformat()}
+    )
+    assert r.status_code == 200, r.text
+    board = r.json()
+    empty = {"have": None, "need": None, "window": None, "same_source": False, "last_date": None}
+
+    for code in ("M-1", "M-2", "M-5"):
+        assert _missing(board, code, "wellness_hooper") == {
+            **empty,
+            "reason": "no_source",
+            "source": "form:wellness_hooper.hooper_total",
+        }
+    assert _missing(board, "M-1", "hrv_z") == {**empty, "reason": "not_linked", "source": "wearable:hrv_rmssd_ms"}
+    assert _missing(board, "M-2", "hrv_z") == {**empty, "reason": "no_data", "source": "wearable:hrv_rmssd_ms"}
+    assert _missing(board, "M-2", "rhr_z") == {
+        **empty,
+        "reason": "stale",
+        "source": "wearable:resting_hr_bpm",
+        "last_date": (board_day - dt.timedelta(days=9)).isoformat(),
+    }
+    assert _missing(board, "M-2", "sleep_duration") is None
+    assert _missing(board, "M-3", "hrv_z") == {
+        "reason": "building",
+        "source": "wearable:hrv_rmssd_ms",
+        "last_date": board_day.isoformat(),
+        "have": 8,
+        "need": 21,
+        "window": 60,
+        "same_source": True,
+    }
+    assert _missing(board, "M-3", "rhr_z") == {
+        "reason": "building",
+        "source": "wearable:resting_hr_bpm",
+        "last_date": board_day.isoformat(),
+        "have": 8,
+        "need": 14,
+        "window": 28,
+        "same_source": True,
+    }
+    switched_hrv = _missing(board, "M-4", "hrv_z")
+    assert switched_hrv is not None
+    assert (switched_hrv["reason"], switched_hrv["have"], switched_hrv["need"]) == ("building", 5, 21)
+    flat_rhr = _missing(board, "M-5", "rhr_z")
+    assert flat_rhr is not None and flat_rhr["reason"] == "no_value"
+    assert flat_rhr["last_date"] == board_day.isoformat()
+    assert _missing(board, "M-5", "acwr") == {
+        "reason": "building",
+        "source": "form:session_rpe.srpe",
+        "last_date": board_day.isoformat(),
+        "have": 10,
+        "need": 28,
+        "window": None,
+        "same_source": False,
+    }
+    # no sessions at all: nothing recorded, not "building"
+    assert _missing(board, "M-1", "acwr") == {**empty, "reason": "no_data", "source": "form:session_rpe.srpe"}
+    assert all(row["scheduled_forms"] == 0 for row in board["rows"])
+
+
+def test_readiness_restricted_cells_reveal_nothing(client: TestClient, db: Session) -> None:
+    org = f.org(db)
+    admin = f.member(db, org, "admin")
+    coach = f.member(db, org, "staff")
+    team = f.group(db, org, "T")
+    f.assign(db, coach, team, "coach")
+    med = f.form(db, org, "med", f.NUMBER_SCHEMA, sensitivity="medical")
+    client.post(
+        f"{API}/orgs/{org.id}/metrics",
+        headers=admin.headers,
+        json={"slug": "med_val", "name": "Medical value", "source": "form:med.value"},
+    )
+    r = client.patch(
+        f"{API}/orgs/{org.id}", headers=admin.headers, json={"settings": {"readiness_metrics": ["med_val"]}}
+    )
+    assert r.status_code == 200, r.text
+    with_data = f.athlete(db, org, code="P-1", groups=(team,))
+    f.athlete(db, org, code="P-2", groups=(team,))
+    f.submit(db, org, med, with_data, {"value": 3}, day(0))
+    params = {"date": day(1).isoformat()}
+    url = f"{API}/orgs/{org.id}/dashboards/readiness"
+    coach_board = client.get(url, headers=coach.headers, params=params).json()
+    restricted = {
+        "reason": "restricted",
+        "source": None,
+        "last_date": None,
+        "have": None,
+        "need": None,
+        "window": None,
+        "same_source": False,
+    }
+    assert _missing(coach_board, "P-1", "med_val") == restricted
+    assert _missing(coach_board, "P-2", "med_val") == restricted
+    admin_board = client.get(url, headers=admin.headers, params=params).json()
+    assert _missing(admin_board, "P-1", "med_val") is None
+    missing = _missing(admin_board, "P-2", "med_val")
+    assert missing is not None and missing["reason"] == "no_data"

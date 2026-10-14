@@ -177,3 +177,42 @@ def test_apply_dispatch_defaults() -> None:
 )
 def test_flags(value: float | None, thresholds: dict | None, expected: str | None) -> None:
     assert t.flag(value, thresholds) == expected
+
+
+@pytest.mark.parametrize(
+    ("transform", "params"),
+    [
+        ("rolling_mean", {"window": 7}),
+        ("rolling_sum", {"window": 5}),
+        ("monotony", {"window": 7}),
+        ("ewma", {"span": 7, "min_periods": 4}),
+        ("acwr", {"acute": 3, "chronic": 9}),
+        ("zscore", {"baseline": 10, "min_periods": 6, "smooth": 3}),
+        ("pct_change", {"baseline": 10, "min_periods": 6}),
+    ],
+)
+def test_shortfall_matches_the_transform(transform: str, params: dict) -> None:
+    """Wherever a day has data, the transform is null exactly when shortfall names a requirement
+    (or the value is undefined for another reason, which these varying inputs avoid)."""
+    values = [NAN if n % 4 == 3 else 50 + (n * 7) % 11 for n in range(30)]
+    sources = ["a" if n < 16 else "b" for n in range(30)]
+    x, src = series(values, sources)
+    out = t.apply(transform, params, x, src)
+    for i in range(len(values)):
+        if math.isnan(values[i]):
+            continue
+        gap = t.shortfall(transform, params, x, src, i)
+        assert (gap is not None) == bool(pd.isna(out.iloc[i])), (transform, i, gap, out.iloc[i])
+        if gap is not None:
+            assert gap.have < gap.need
+
+
+def test_shortfall_reports_baseline_before_smoothing() -> None:
+    x, src = series([60.0] * 3 + [61.0, 59.0, 62.0], ["old"] * 3 + ["new"] * 3)
+    params = {"baseline": 60, "min_periods": 21, "smooth": 7, "ln": True}
+    # day 5 on the new device: 2 same-device baseline days of 21, though smoothing also falls short
+    assert t.shortfall("zscore", params, x, src, 5) == t.Shortfall(have=2, need=21, window=60, same_source=True)
+    x, src = series([60.0, 61.0, 59.0, NAN, NAN, 62.0])
+    params = {"baseline": 60, "min_periods": 2, "smooth": 7}
+    assert t.shortfall("zscore", params, x, src, 5) == t.Shortfall(have=4, need=5, window=7, same_source=True)
+    assert t.shortfall("none", {}, x, src, 5) is None

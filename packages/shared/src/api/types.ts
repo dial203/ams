@@ -435,14 +435,49 @@ export type SeriesSource = { ref: SeriesRef; label: string; unit: string | null;
 export type MetricPoint = { date: ISODate; value: number | null; flag: Flag; source: string | null };
 export type MetricSeries = { metric: MetricDefinition; athlete_id: UUID; points: MetricPoint[] };
 
-/** Latest value on or before the board date within 3 days. */
-export type ReadinessCell = { value: number | null; flag: Flag; date: ISODate | null };
+/** Latest value on or before the board date within 3 days; `missing` is set exactly when `value` is null. */
+export type ReadinessCell = { value: number | null; flag: Flag; date: ISODate | null; missing: ReadinessMissing | null };
+
+export type MissingReason =
+  /** The caller cannot read the metric's source form for this athlete (nothing else is revealed). */
+  | "restricted"
+  /** The source at the end of the metric chain does not exist (e.g. the form was never created). */
+  | "no_source"
+  /** Wearable source, no data, and the athlete has no Open Wearables link. */
+  | "not_linked"
+  /** Nothing recorded for this athlete on or before the board date. */
+  | "no_data"
+  /** The last data (`last_date`) is older than the 3-day window. */
+  | "stale"
+  /** Data in the window, but fewer observed days than the transform needs (`have` < `need`). */
+  | "building"
+  /** Requirements met but the value is undefined (e.g. a zero baseline SD). */
+  | "no_value";
+
+export type ReadinessMissing = {
+  reason: MissingReason;
+  /** The form or wearable source at the end of the metric chain (null when restricted). */
+  source: SeriesRef | null;
+  /** stale / building / no_value: last day with source data on or before the board date. */
+  last_date: ISODate | null;
+  /** building: observed days so far. */
+  have: number | null;
+  /** building: observed days required. */
+  need: number | null;
+  /** building: days counted over, ending on `last_date` (null = all history). */
+  window: number | null;
+  /** building: only days from that day's provider/device count (baselines). */
+  same_source: boolean;
+};
+
 export type ReadinessRow = {
   athlete: { id: UUID; display_name: string; code: string; position: string | null };
   /** Keyed by metric slug. */
   cells: Record<string, ReadinessCell>;
   /** Forms due today not yet submitted. */
   due_forms: number;
+  /** Published forms with a schedule in force for the athlete's groups (0: nothing is ever due). */
+  scheduled_forms: number;
 };
 export type ReadinessBoard = { date: ISODate; group_id: UUID | null; columns: MetricDefinition[]; rows: ReadinessRow[] };
 

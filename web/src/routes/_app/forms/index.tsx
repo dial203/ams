@@ -38,6 +38,8 @@ import { useOrg } from "@/lib/org";
 import { useForms } from "@/lib/queries";
 
 export const Route = createFileRoute("/_app/forms/")({
+  // template: open the template dialog on that template (the readiness board links here when a metric's form is missing)
+  validateSearch: z.object({ template: z.string().optional() }),
   component: FormsPage,
 });
 
@@ -47,7 +49,8 @@ function FormsPage() {
   const [kind, setKind] = useState<FormKind | "">("");
   const [archived, setArchived] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [templates, setTemplates] = useState(false);
+  const { template } = Route.useSearch();
+  const [templates, setTemplates] = useState(isAdmin && template !== undefined);
   const forms = useForms({ kind: kind || null, include_archived: archived || null });
 
   return (
@@ -169,7 +172,14 @@ function FormsPage() {
         )}
       </PageBody>
       <NewFormDialog open={creating} onOpenChange={setCreating} />
-      <TemplatesDialog open={templates} onOpenChange={setTemplates} />
+      <TemplatesDialog
+        open={templates}
+        preselect={template}
+        onOpenChange={(o) => {
+          setTemplates(o);
+          if (!o && template !== undefined) void navigate({ to: "/forms", search: {}, replace: true });
+        }}
+      />
     </>
   );
 }
@@ -270,12 +280,22 @@ function NewFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange(o: 
   );
 }
 
-function TemplatesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(o: boolean): void }) {
+function TemplatesDialog({
+  open,
+  onOpenChange,
+  preselect,
+}: {
+  open: boolean;
+  onOpenChange(o: boolean): void;
+  /** Template key to show first, when it exists. */
+  preselect?: string;
+}) {
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { orgId } = useOrg();
-  const [picked, setPicked] = useState<FormTemplate | null>(null);
+  const [chosen, setChosen] = useState<FormTemplate | null>(null);
+  const [usePreselect, setUsePreselect] = useState(true);
   const [name, setName] = useState("");
   const templates = useQuery({
     queryKey: queryKeys.formTemplates.list(orgId),
@@ -283,6 +303,11 @@ function TemplatesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(o
     enabled: open,
     staleTime: 10 * 60_000,
   });
+  const picked = chosen ?? (usePreselect && preselect ? (templates.data?.find((t) => t.key === preselect) ?? null) : null);
+  const setPicked = (t: FormTemplate | null) => {
+    setChosen(t);
+    setUsePreselect(false);
+  };
   const install = useMutation({
     mutationFn: (t: FormTemplate) => api.formTemplates.install(orgId, t.key, name.trim() ? { name: name.trim() } : {}),
     onSuccess: (f) => {

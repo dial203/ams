@@ -6,6 +6,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { PageBody, PageHeader } from "@/components/page";
 import { ReadinessTable, SummaryStrip } from "@/components/readiness/ReadinessTable";
+import { SetupPanel } from "@/components/readiness/SetupPanel";
 import type { RowFilter, SortDir, SortKey } from "@/components/readiness/readiness-logic";
 import { EmptyState, ErrorState, Spinner } from "@/components/states";
 import { Button } from "@/components/ui/button";
@@ -117,6 +118,7 @@ function ReadinessPage() {
         ) : (
           <>
             <SummaryStrip board={board.data} filter={filter} onFilterChange={setFilter} />
+            <SetupPanel board={board.data} isAdmin={isAdmin} terms={terms} />
             <ReadinessTable
               board={board.data}
               sort={sort.key}
@@ -138,6 +140,7 @@ function Legend() {
   return (
     <p className="text-xs text-muted-foreground">
       Values are the latest on or before the board date within 3 days; a small “2d” marks values from earlier days.
+      Empty cells say why (no wearable, no data, last value “8d ago”, baseline days “8/21d”); hover for details.
       Flags follow each metric’s thresholds. Sorted by priority (red, amber, missing) until you sort a column.
     </p>
   );

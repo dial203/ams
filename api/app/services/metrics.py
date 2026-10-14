@@ -6,10 +6,12 @@ import datetime as dt
 import uuid
 from typing import Any
 
+import pandas as pd
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.metrics import transforms
 from app.metrics.engine import CycleError, MetricEngine, MetricError, parse_ref
 from app.metrics.transforms import TransformError
 from app.models import Athlete, Form, MetricDefinition
@@ -21,12 +23,13 @@ from app.schemas.domain import (
     ReadinessAthlete,
     ReadinessBoard,
     ReadinessCell,
+    ReadinessMissing,
     ReadinessRow,
     Thresholds,
 )
 from app.services.orgs import org_settings
 from app.services.people import display_name
-from app.services.reminders import count_due_open
+from app.services.reminders import due_counts
 
 READINESS_WINDOW_DAYS = 3
 
@@ -102,6 +105,74 @@ def metric_series(
     return MetricSeries(metric=metric_out(defn), athlete_id=athlete_id, points=points.get(athlete_id, []))
 
 
+def _missing(reason: str, source: str | None = None, last_date: dt.date | None = None) -> ReadinessMissing:
+    return ReadinessMissing(
+        reason=reason,  # type: ignore[arg-type]
+        source=source,
+        last_date=last_date,
+        have=None,
+        need=None,
+        window=None,
+        same_source=False,
+    )
+
+
+def _empty_cells(
+    engine: MetricEngine, defn: MetricDefinition, athletes: list[Athlete], start: dt.date, day: dt.date
+) -> dict[uuid.UUID, ReadinessMissing]:
+    """Why each athlete has no value for ``defn`` in [start, day]: the source does not exist, the
+    athlete has no data (or no wearable link), the last data is older than the window, or the data
+    in the window does not yet meet the transform's history requirement."""
+    try:
+        leaf = engine.leaf(defn)
+    except (CycleError, MetricError):
+        return {a.id: _missing("no_source", defn.source) for a in athletes}
+    source = str(leaf)
+    if not engine.source_exists(leaf):
+        return {a.id: _missing("no_source", source) for a in athletes}
+    try:
+        inputs = engine.inputs(defn, start, day)
+    except (CycleError, MetricError, TransformError):
+        return {a.id: _missing("no_value", source) for a in athletes}
+    last = engine.last_observed(leaf, day)
+    out: dict[uuid.UUID, ReadinessMissing] = {}
+    for a in athletes:
+        base = inputs.get(a.id)
+        recent = (
+            base.values[(base.values.index >= pd.Timestamp(start)) & base.values.notna()]
+            if base is not None and not base.values.empty
+            else None
+        )
+        if base is not None and recent is not None and not recent.empty:
+            t = recent.index[-1]
+            try:
+                gap = transforms.shortfall(
+                    defn.transform, defn.params or {}, base.values, base.sources, base.values.index.get_loc(t)
+                )
+            except TransformError:
+                gap = None
+            out[a.id] = (
+                ReadinessMissing(
+                    reason="building",
+                    source=source,
+                    last_date=t.date(),
+                    have=gap.have,
+                    need=gap.need,
+                    window=gap.window,
+                    same_source=gap.same_source,
+                )
+                if gap
+                else _missing("no_value", source, t.date())
+            )
+        elif a.id in last:
+            out[a.id] = _missing("stale", source, last[a.id])
+        elif leaf.kind == "wearable" and a.ow_user_id is None:
+            out[a.id] = _missing("not_linked", source)
+        else:
+            out[a.id] = _missing("no_data", source)
+    return out
+
+
 def readiness_board(
     db: Session, p: Principal, athletes: list[Athlete], day: dt.date, group_id: uuid.UUID | None
 ) -> ReadinessBoard:
@@ -124,34 +195,40 @@ def readiness_board(
             pts = series_points(engine, m, start, day)
         except HTTPException:
             pts = {}
+        readable = [a for a in athletes if all(p.can_read_form_data(f, a.id, rights.get(a.id)) for f in forms)]
+        latest = {
+            a.id: next((pt for pt in reversed(pts.get(a.id, [])) if pt.value is not None), None) for a in readable
+        }
+        empty = _empty_cells(engine, m, [a for a in readable if latest[a.id] is None], start, day)
         per_athlete: dict[uuid.UUID, ReadinessCell] = {}
         for aid in ids:
-            if not all(p.can_read_form_data(f, aid, rights.get(aid)) for f in forms):
-                per_athlete[aid] = ReadinessCell(value=None, flag=None, date=None)
-                continue
-            latest = next((pt for pt in reversed(pts.get(aid, [])) if pt.value is not None), None)
-            per_athlete[aid] = (
-                ReadinessCell(value=latest.value, flag=latest.flag, date=latest.date)
-                if latest
-                else ReadinessCell(value=None, flag=None, date=None)
-            )
+            pt = latest.get(aid)
+            if pt is not None:
+                per_athlete[aid] = ReadinessCell(value=pt.value, flag=pt.flag, date=pt.date, missing=None)
+            else:
+                # unreadable source forms: say so without revealing whether data exists
+                why = empty.get(aid) or _missing("restricted")
+                per_athlete[aid] = ReadinessCell(value=None, flag=None, date=None, missing=why)
         cells[m.slug] = per_athlete
     from app.permissions import load_group_tree
 
     tree = load_group_tree(db, p.org_id)
-    rows = [
-        ReadinessRow(
-            athlete=ReadinessAthlete(
-                id=a.id,
-                display_name=display_name(a, bool(rights.get(a.id) and rights[a.id].identifiable)),
-                code=a.code,
-                position=a.position,
-            ),
-            cells={m.slug: cells[m.slug][a.id] for m in columns},
-            due_forms=count_due_open(db, p.org, a.id, day, tree),
+    rows: list[ReadinessRow] = []
+    for a in athletes:
+        due, scheduled = due_counts(db, p.org, a.id, day, tree)
+        rows.append(
+            ReadinessRow(
+                athlete=ReadinessAthlete(
+                    id=a.id,
+                    display_name=display_name(a, bool(rights.get(a.id) and rights[a.id].identifiable)),
+                    code=a.code,
+                    position=a.position,
+                ),
+                cells={m.slug: cells[m.slug][a.id] for m in columns},
+                due_forms=due,
+                scheduled_forms=scheduled,
+            )
         )
-        for a in athletes
-    ]
     return ReadinessBoard(date=day, group_id=group_id, columns=[metric_out(m) for m in columns], rows=rows)
 
 

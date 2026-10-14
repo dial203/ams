@@ -79,18 +79,32 @@ def completed_forms(db: Session, athlete_id: uuid.UUID, form_ids: list[uuid.UUID
     )
 
 
-def count_due_open(db: Session, org: Organization, athlete_id: uuid.UUID, day: dt.date, tree: GroupTree) -> int:
-    due = due_today(db, org.id, athlete_id, day, tree)
-    if not due:
-        return 0
-    live = set(
-        db.scalars(
-            select(Form.id).where(
-                Form.id.in_(list(due)), Form.archived.is_(False), Form.current_version_id.is_not(None)
-            )
+def in_force(s: FormSchedule, day: dt.date) -> bool:
+    """The schedule can still make the form due on ``day`` or a later day (any weekday)."""
+    if not s.active or day < s.start_date or (s.end_date is not None and day > s.end_date):
+        return False
+    return s.recurrence != "once" or day == s.start_date
+
+
+def due_counts(db: Session, org: Organization, athlete_id: uuid.UUID, day: dt.date, tree: GroupTree) -> tuple[int, int]:
+    """(forms due on ``day`` and not yet submitted, forms with a schedule in force for the athlete)."""
+    groups = athlete_schedule_groups(db, athlete_id, tree, day)
+    if not groups:
+        return 0, 0
+    rows = db.scalars(
+        select(FormSchedule)
+        .join(Form, Form.id == FormSchedule.form_id)
+        .where(
+            FormSchedule.org_id == org.id,
+            FormSchedule.group_id.in_(list(groups)),
+            FormSchedule.active.is_(True),
+            Form.archived.is_(False),
+            Form.current_version_id.is_not(None),
         )
-    )
-    return len(live - completed_forms(db, athlete_id, list(live), day))
+    ).all()
+    scheduled = {s.form_id for s in rows if in_force(s, day)}
+    due = {s.form_id for s in rows if schedule_applies(s, day)}
+    return len(due - completed_forms(db, athlete_id, list(due), day)), len(scheduled)
 
 
 @dataclass
