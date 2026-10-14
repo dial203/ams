@@ -122,7 +122,7 @@ function fixture(opts: { admin?: boolean; masked?: boolean } = {}): DemoFixture 
     name: "Demo Performance",
     slug: "demo-performance",
     timezone: "America/New_York",
-    settings: { terminology: { athlete: "Athlete", athletes: "Athletes", group: "Group", groups: "Groups" }, readiness_metrics: ["wellness"] },
+    settings: { terminology: { athlete: "Athlete", athletes: "Athletes", group: "Group", groups: "Groups" }, readiness_metrics: ["wellness"], wearable_priority: [] },
     created_at: "2026-09-01T10:00:00Z",
   };
   const user = { id: "00000000-0000-4000-8000-0000000000e1", email: "admin@example.com", full_name: "Avery Admin", is_active: true, created_at: "2026-09-01T10:00:00Z" };
@@ -134,8 +134,9 @@ function fixture(opts: { admin?: boolean; masked?: boolean } = {}): DemoFixture 
     rows: [
       {
         athlete: { id: MAYA, display_name: "Maya Okafor", code: "A-0001", position: "100m" },
-        cells: { wellness: { value: 13, flag: "red" as const, date } },
+        cells: { wellness: { value: 13, flag: "red" as const, date, missing: null } },
         due_forms: 1,
+        scheduled_forms: 1,
       },
     ],
   });
@@ -194,7 +195,17 @@ function fixture(opts: { admin?: boolean; masked?: boolean } = {}): DemoFixture 
     readiness: { all: { "2026-10-11": board("2026-10-11"), [DAY]: board(DAY) } },
     wearables: {
       providers: { $error: { status: 503, body: { detail: "Open Wearables is not configured (OW_BASE_URL / OW_API_KEY)" } } },
-      status: { [MAYA]: { linked: false, ow_user_id: null, connections: [] } },
+      status: {
+        [MAYA]: {
+          linked: false,
+          ow_user_id: null,
+          connections: [],
+          priority: null,
+          effective_priority: ["apple", "garmin"],
+          sources: ["garmin", "oura"],
+          history_synced_at: null,
+        },
+      },
       daily: { [MAYA]: [{ local_date: DAY, metric: "steps", value: 9000, unit: "steps", provider: "oura", device: null }] },
     },
   };
@@ -305,14 +316,23 @@ describe("reads", () => {
     const api = backend();
     await api.login();
     const today = (await api.call("GET", o("/dashboards/readiness"), undefined, { query: `date=${DAY}` })).body as {
-      rows: { athlete: { code: string }; cells: Record<string, { value: number | null }>; due_forms: number }[];
+      rows: {
+        athlete: { code: string };
+        cells: Record<string, { value: number | null; missing?: { reason: string } | null }>;
+        due_forms: number;
+        scheduled_forms: number;
+      }[];
     };
     expect(today.rows.map((r) => [r.athlete.code, r.cells.wellness!.value, r.due_forms])).toEqual([
       ["A-0001", 13, 1],
       ["A-0002", null, 0],
     ]);
     const older = (await api.call("GET", o("/dashboards/readiness"), undefined, { query: "date=2026-10-10" })).body as typeof today;
-    expect(older.rows[0]!.cells.wellness).toEqual({ value: 9, flag: "green", date: "2026-10-10" });
+    expect(older.rows[0]!.cells.wellness).toEqual({ value: 9, flag: "green", date: "2026-10-10", missing: null });
+    // athletes without an exported row: the demo can only say there is no value
+    const leo = today.rows[1]!;
+    expect(leo.cells.wellness!.missing?.reason).toBe("no_data");
+    expect([today.rows[0]!.scheduled_forms, leo.scheduled_forms]).toEqual([1, 0]);
     // a group this login cannot list (a filter remembered from another role) filters by membership
     const sprints = (await api.call("GET", o("/dashboards/readiness"), undefined, { query: `group_id=${TEAM}` })).body as typeof today;
     expect(sprints.rows).toHaveLength(2);
@@ -325,7 +345,17 @@ describe("reads", () => {
     await api.login();
     const providers = await api.call("GET", o("/wearables/providers"));
     expect(providers.status).toBe(503);
-    expect((await api.call("GET", o(`/athletes/${MAYA}/wearables`))).body).toEqual({ linked: false, ow_user_id: null, connections: [] });
+    const status = (await api.call("GET", o(`/athletes/${MAYA}/wearables`))).body as { linked: boolean; sources: string[] };
+    expect(status.linked).toBe(false);
+    // the ranking is recomputed from this tab's settings; sources follow it
+    const ranked = await api.call("PUT", o(`/athletes/${MAYA}/wearables/priority`), { providers: ["oura"] });
+    expect(ranked.status).toBe(200);
+    expect(ranked.body).toMatchObject({ priority: ["oura"], sources: ["oura", "garmin"] });
+    expect((ranked.body as { effective_priority: string[] }).effective_priority.slice(0, 2)).toEqual(["oura", "apple"]);
+    expect((await api.call("PUT", o(`/athletes/${MAYA}/wearables/priority`), { providers: ["Oura!"] })).status).toBe(422);
+    const reset = await api.call("PUT", o(`/athletes/${MAYA}/wearables/priority`), { providers: null });
+    expect(reset.body).toMatchObject({ priority: null, sources: ["garmin", "oura"] });
+    expect((await api.call("POST", o(`/athletes/${MAYA}/wearables/history`))).status).toBe(409);
     expect((await api.call("GET", o(`/athletes/${MAYA}/wearables/daily`), undefined, { query: `start=${DAY}&end=${DAY}` })).body).toHaveLength(1);
     expect((await api.call("POST", o(`/athletes/${MAYA}/wearables/link`))).status).toBe(503);
   });

@@ -187,7 +187,7 @@ def me_wearables(p: AthleteSelfDep, db: DbSession) -> WearableStatus:
     with OpenWearablesClient.from_settings() as client:
         wsvc.link_athlete(db, client, athlete)
         db.commit()
-        return wsvc.wearable_status(client, athlete)
+        return wsvc.wearable_status(db, client, athlete, p.org)
 
 
 @router.get("/wearables/providers", response_model=list[WearableProviderOut])

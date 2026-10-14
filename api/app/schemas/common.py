@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal
 
 from fastapi import Query
@@ -31,3 +32,18 @@ class Page[T](BaseModel):
 
 class Detail(BaseModel):
     detail: str
+
+
+PROVIDER_KEY_RE = re.compile(r"^[a-z0-9_]{1,32}$")
+
+
+def check_provider_order(v: list[str] | None) -> list[str] | None:
+    """A ranking of Open Wearables provider keys (e.g. ["oura", "garmin"]); duplicates dropped."""
+    if v is None:
+        return None
+    if len(v) > 32:
+        raise ValueError("at most 32 providers")
+    for key in v:
+        if not PROVIDER_KEY_RE.match(key):
+            raise ValueError(f"invalid provider key {key!r}")
+    return list(dict.fromkeys(v))

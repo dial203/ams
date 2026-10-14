@@ -109,3 +109,12 @@ export function paginate<T>(items: readonly T[], query: URLSearchParams): { item
   const offset = queryInt(query, "offset", 0, 0, Number.MAX_SAFE_INTEGER);
   return { items: items.slice(offset, offset + limit), total: items.length };
 }
+
+/** A wearable provider ranking as the API validates it: lowercase keys, at most 32, duplicates dropped. */
+export function providerOrder(value: unknown[], field = "wearable_priority"): string[] {
+  if (value.length > 32) throw invalidBody(field, "at most 32 providers");
+  const keys = value.map(String);
+  const bad = keys.find((k) => !/^[a-z0-9_]{1,32}$/.test(k));
+  if (bad !== undefined) throw invalidBody(field, `invalid provider key '${bad}'`);
+  return [...new Set(keys)];
+}

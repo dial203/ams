@@ -33,6 +33,7 @@ x-api-env: &api_env
   OW_APP_ID: ${OW_APP_ID:-}
   OW_APP_SECRET: ${OW_APP_SECRET:-}
   OW_WEBHOOK_SECRET: ${OW_WEBHOOK_SECRET:-}
+  WEARABLE_HISTORY_DAYS: ${WEARABLE_HISTORY_DAYS:-365}
   EXPO_PUSH_ENABLED: ${EXPO_PUSH_ENABLED:-false}
   # First-start setup, applied by the API container on every start and only adding what is missing
   AMS_SEED_DEMO: ${AMS_SEED_DEMO:-false}

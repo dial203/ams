@@ -215,10 +215,11 @@ class OpenWearablesClient:
         log.warning("OW %s: stopped after %d pages", path, MAX_PAGES)
 
     def _summaries(self, kind: str, model: type[M], user_id: uuid.UUID, start: dt.date, end: dt.date) -> list[M]:
+        """Every source's summaries: AMS applies its own provider ranking (daily.provider_order)."""
         rows = list(
             self._paged(
                 f"/users/{user_id}/summaries/{kind}",
-                {"start_date": start.isoformat(), "end_date": end.isoformat()},
+                {"start_date": start.isoformat(), "end_date": end.isoformat(), "filter_by_priority": "false"},
             )
         )
         return self._parse_list(model, rows)

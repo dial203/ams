@@ -1,7 +1,16 @@
-import { diffDays, formatMetricValue, type MetricDefinition, type ReadinessBoard, type ReadinessCell } from "@ams/shared";
+import {
+  diffDays,
+  formatMetricValue,
+  type MetricDefinition,
+  type MissingReason,
+  type ReadinessBoard,
+  type ReadinessCell,
+  type ReadinessMissing,
+} from "@ams/shared";
 import { Fragment, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, ClipboardList } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarX, ClipboardList, Clock3, FileX, Hourglass, Lock, Unlink, type LucideIcon } from "lucide-react";
 import { FlagIcon } from "@/components/readiness/FlagIcon";
+import { missingLabel, missingText } from "@/components/readiness/missing";
 import { FLAG_TEXT, flagCellClass } from "@/lib/flags";
 import {
   filterRows,
@@ -122,8 +131,13 @@ export function ReadinessTable({ board, sort, dir, onSortChange, filter, onRowCl
                     {row.due_forms}
                     <span className="sr-only"> forms due</span>
                   </Badge>
+                ) : row.scheduled_forms === 0 ? (
+                  <span className="inline-flex text-muted-foreground/70" title="No forms are scheduled for this athlete">
+                    <CalendarX aria-hidden className="size-3.5" />
+                    <span className="sr-only">No forms scheduled</span>
+                  </span>
                 ) : (
-                  <span className="text-muted-foreground/60" aria-label="No forms due">
+                  <span className="text-muted-foreground/60" aria-label="No forms due" title="Nothing due today">
                     –
                   </span>
                 )}
@@ -141,7 +155,43 @@ export function ReadinessTable({ board, sort, dir, onSortChange, filter, onRowCl
   );
 }
 
+const MISSING_ICON: Partial<Record<MissingReason, LucideIcon>> = {
+  restricted: Lock,
+  no_source: FileX,
+  not_linked: Unlink,
+  stale: Clock3,
+  building: Hourglass,
+};
+
+function MissingCellView({ metric, missing, boardDate }: { metric: MetricDefinition; missing: ReadinessMissing; boardDate: string }) {
+  const Icon = MISSING_ICON[missing.reason];
+  const progress = missing.reason === "building" && missing.need ? Math.min(1, (missing.have ?? 0) / missing.need) : null;
+  const text = missingText(missing, metric, boardDate);
+  return (
+    <td className="border-b px-3 py-1.5 text-right" data-flag="missing" data-missing={missing.reason}>
+      <span className="sr-only">{text}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span aria-hidden className="inline-flex flex-col items-end gap-0.5 text-[11px] leading-none text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              {Icon && <Icon aria-hidden className="size-3 opacity-70" />}
+              {missingLabel(missing, boardDate)}
+            </span>
+            {progress !== null && (
+              <span aria-hidden className="block h-0.5 w-10 overflow-hidden rounded-full bg-muted">
+                <span className="block h-full rounded-full bg-muted-foreground/50" style={{ width: `${progress * 100}%` }} />
+              </span>
+            )}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{text}</TooltipContent>
+      </Tooltip>
+    </td>
+  );
+}
+
 function ReadinessCellView({ metric, cell, boardDate }: { metric: MetricDefinition; cell: ReadinessCell | undefined; boardDate: string }) {
+  if (cell?.value === null && cell.missing) return <MissingCellView metric={metric} missing={cell.missing} boardDate={boardDate} />;
   if (!cell || cell.value === null) {
     return (
       <td className="border-b px-3 py-1.5 text-right text-muted-foreground/60" data-flag="missing">

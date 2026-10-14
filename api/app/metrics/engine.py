@@ -4,8 +4,9 @@ A definition's ``source`` gives a base daily series:
 
 * ``form:<slug>.<field>``: the field (input or calculated) of non-deleted submissions, collapsed per
   ``local_date`` with ``daily_agg`` (``last`` = latest ``observed_at``). Booleans count as 1/0.
-* ``wearable:<metric>``: ``wearable_daily`` rows; one value per day (the most recently refreshed
-  provider), with ``provider/device`` kept as the day's source label for same-source baselines.
+* ``wearable:<metric>``: ``wearable_daily`` rows; one value per day, from the athlete's
+  highest-ranked provider that has one (``daily.provider_order``), with ``provider/device`` kept
+  as the day's source label for same-source baselines.
 * ``metric:<slug>``: another definition's transformed output (cycles are rejected).
 
 With ``fill_zero`` days without data count as 0 between the athlete's first and last observation
@@ -31,9 +32,9 @@ from sqlalchemy.orm import Session
 
 from app.forms.expr import round_half_away
 from app.forms.schema import index_schema
-from app.integrations.open_wearables.daily import WEARABLE_METRICS
+from app.integrations.open_wearables.daily import WEARABLE_METRICS, provider_order, provider_rank
 from app.metrics import transforms
-from app.models import Form, MetricDefinition, Submission, WearableDaily
+from app.models import Athlete, Form, MetricDefinition, Organization, Submission, WearableDaily
 
 SourceKind = Literal["form", "wearable", "metric"]
 # (first, last) local_date an athlete has data for a source
@@ -131,6 +132,8 @@ class MetricEngine:
         self.athlete_ids = list(dict.fromkeys(athlete_ids))
         self._defs: dict[str, MetricDefinition] | None = None
         self._memo: dict[tuple[str, dt.date | None, dt.date], dict[uuid.UUID, Series]] = {}
+        self._inputs: dict[tuple[str, dt.date | None, dt.date], dict[uuid.UUID, Series]] = {}
+        self._orders: dict[uuid.UUID, list[str]] | None = None
 
     # ------------------------------------------------------------------ definitions
     @property
@@ -166,6 +169,20 @@ class MetricEngine:
         if ref.kind == "metric" and ref.name in self.definitions:
             return self.form_refs(self.definitions[ref.name], (*stack, defn.slug))
         return []
+
+    @property
+    def provider_orders(self) -> dict[uuid.UUID, list[str]]:
+        """Each athlete's wearable provider ranking (their own, else the organization's)."""
+        if self._orders is None:
+            from app.services.orgs import org_settings
+
+            org = self.db.get(Organization, self.org_id)
+            org_order = org_settings(org).wearable_priority if org else []
+            rows = self.db.execute(
+                select(Athlete.id, Athlete.wearable_priority).where(Athlete.id.in_(self.athlete_ids))
+            )
+            self._orders = {row[0]: provider_order(row[1], org_order) for row in rows}
+        return self._orders
 
     # ------------------------------------------------------------------ loading
     def _calendar(self, first: dt.date | None, start: dt.date | None, end: dt.date) -> pd.DatetimeIndex:
@@ -219,26 +236,28 @@ class MetricEngine:
     ) -> tuple[dict[uuid.UUID, dict[dt.date, tuple[float, str]]], dict[uuid.UUID, Bounds]]:
         if ref.name not in WEARABLE_METRICS or not self.athlete_ids:
             return {}, {}
-        q = (
-            select(
-                WearableDaily.athlete_id,
-                WearableDaily.local_date,
-                WearableDaily.value,
-                WearableDaily.provider,
-                WearableDaily.device,
-            )
-            .where(
-                WearableDaily.athlete_id.in_(self.athlete_ids),
-                WearableDaily.metric == ref.name,
-                WearableDaily.local_date <= end,
-            )
-            .order_by(WearableDaily.local_date, WearableDaily.updated_at, WearableDaily.provider)
+        q = select(
+            WearableDaily.athlete_id,
+            WearableDaily.local_date,
+            WearableDaily.value,
+            WearableDaily.provider,
+            WearableDaily.device,
+        ).where(
+            WearableDaily.athlete_id.in_(self.athlete_ids),
+            WearableDaily.metric == ref.name,
+            WearableDaily.local_date <= end,
         )
         if start is not None:
             q = q.where(WearableDaily.local_date >= start)
         out: dict[uuid.UUID, dict[dt.date, tuple[float, str]]] = defaultdict(dict)
+        best: dict[tuple[uuid.UUID, dt.date], tuple[int, str]] = {}
+        orders = self.provider_orders
         for aid, day, value, provider, device in self.db.execute(q):
-            out[aid][day] = (float(value), f"{provider}/{device}" if device else provider)  # latest refresh wins
+            rank = provider_rank(orders.get(aid) or provider_order(None, None), provider)
+            if (aid, day) in best and best[(aid, day)] <= rank:
+                continue
+            best[(aid, day)] = rank
+            out[aid][day] = (float(value), f"{provider}/{device}" if device else provider)
         bounds: dict[uuid.UUID, Bounds] = {}
         bounds_q = (
             select(WearableDaily.athlete_id, func.min(WearableDaily.local_date), func.max(WearableDaily.local_date))
@@ -314,9 +333,7 @@ class MetricEngine:
         key = (defn.slug, start, end)
         if key in self._memo:
             return self._memo[key]
-        lb = self.lookback(defn, stack)
-        hist_start = None if (start is None or lb is None) else start - dt.timedelta(days=lb)
-        base = self._base(defn, hist_start, end, (*stack, defn.slug))
+        base = self.inputs(defn, start, end, stack)
         out: dict[uuid.UUID, Series] = {}
         for aid, s in base.items():
             if s.values.empty:
@@ -332,6 +349,20 @@ class MetricEngine:
             out[aid] = Series(values.astype(float), labels)
         self._memo[key] = out
         return out
+
+    def inputs(
+        self, defn: MetricDefinition, start: dt.date | None, end: dt.date, stack: tuple[str, ...] = ()
+    ) -> dict[uuid.UUID, Series]:
+        """The daily series ``transform`` is applied to: from the history ``series`` needs before
+        ``start`` through ``end``."""
+        if defn.slug in stack:
+            raise CycleError(f"circular metric reference: {' -> '.join([*stack, defn.slug])}")
+        key = (defn.slug, start, end)
+        if key not in self._inputs:
+            lb = self.lookback(defn, stack)
+            hist_start = None if (start is None or lb is None) else start - dt.timedelta(days=lb)
+            self._inputs[key] = self._base(defn, hist_start, end, (*stack, defn.slug))
+        return self._inputs[key]
 
     def points(self, defn: MetricDefinition, start: dt.date, end: dt.date) -> dict[uuid.UUID, list[PointOut]]:
         """Rounded points for every day in [start, end] with flags and source labels."""
@@ -367,6 +398,60 @@ class MetricEngine:
         if ref.kind == "metric" and ref.name in self.definitions and defn.slug not in stack:
             return self.is_wearable_based(self.definitions[ref.name], (*stack, defn.slug))
         return False
+
+    def leaf(self, defn: MetricDefinition, stack: tuple[str, ...] = ()) -> SeriesRef:
+        """The form or wearable source at the end of the metric's ``metric:`` chain (or the first
+        ``metric:`` reference that names no definition)."""
+        if defn.slug in stack:
+            raise CycleError(f"circular metric reference: {' -> '.join([*stack, defn.slug])}")
+        ref = parse_ref(defn.source)
+        if ref.kind == "metric" and ref.name in self.definitions:
+            return self.leaf(self.definitions[ref.name], (*stack, defn.slug))
+        return ref
+
+    def source_exists(self, ref: SeriesRef) -> bool:
+        if ref.kind == "wearable":
+            return ref.name in WEARABLE_METRICS
+        if ref.kind == "form":
+            return self.db.scalar(select(Form.id).where(Form.org_id == self.org_id, Form.slug == ref.name)) is not None
+        return ref.name in self.definitions
+
+    def last_observed(self, ref: SeriesRef, end: dt.date) -> dict[uuid.UUID, dt.date]:
+        """Last day on or before ``end`` each athlete has data for a form or wearable source."""
+        if not self.athlete_ids:
+            return {}
+        if ref.kind == "wearable":
+            q = (
+                select(WearableDaily.athlete_id, func.max(WearableDaily.local_date))
+                .where(
+                    WearableDaily.athlete_id.in_(self.athlete_ids),
+                    WearableDaily.metric == ref.name,
+                    WearableDaily.local_date <= end,
+                )
+                .group_by(WearableDaily.athlete_id)
+            )
+        elif ref.kind == "form":
+            key = ref.field or ""
+            numeric_types = ("number", "boolean")
+            q = (
+                select(Submission.athlete_id, func.max(Submission.local_date))
+                .join(Form, Form.id == Submission.form_id)
+                .where(
+                    Form.org_id == self.org_id,
+                    Form.slug == ref.name,
+                    Submission.athlete_id.in_(self.athlete_ids),
+                    Submission.deleted_at.is_(None),
+                    Submission.local_date <= end,
+                    or_(
+                        func.jsonb_typeof(Submission.values[key]).in_(numeric_types),
+                        func.jsonb_typeof(Submission.computed[key]).in_(numeric_types),
+                    ),
+                )
+                .group_by(Submission.athlete_id)
+            )
+        else:
+            return {}
+        return {row[0]: row[1] for row in self.db.execute(q)}
 
 
 # ----------------------------------------------------------------------------- validation

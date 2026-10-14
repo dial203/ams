@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.integrations.open_wearables import webhooks
 from app.integrations.open_wearables.client import API_KEY_HEADER, OpenWearablesClient
+from app.integrations.open_wearables.daily import DEFAULT_PROVIDER_PRIORITY
 from app.integrations.open_wearables.errors import OpenWearablesError
 from app.models import Athlete, WearableDaily
 from app.timeutil import today_in
@@ -150,7 +151,15 @@ def test_link_creates_ow_user_and_is_idempotent(client: TestClient, db: Session)
         )
     )
     url = f"{API}/orgs/{org.id}/athletes/{a.id}/wearables"
-    assert client.get(url, headers=admin.headers).json() == {"linked": False, "ow_user_id": None, "connections": []}
+    assert client.get(url, headers=admin.headers).json() == {
+        "linked": False,
+        "ow_user_id": None,
+        "connections": [],
+        "priority": None,
+        "effective_priority": list(DEFAULT_PROVIDER_PRIORITY),
+        "sources": [],
+        "history_synced_at": None,
+    }
     r = client.post(f"{url}/link", headers=admin.headers)
     assert r.status_code == 200, r.text
     status = r.json()
@@ -343,6 +352,12 @@ def mock_summaries(
     respx.get(f"{OW}/users/{OW_USER}/timeseries").mock(return_value=httpx.Response(200, json=page(body or [])))
 
 
+def sleep_starts(since: int = 0) -> list[str]:
+    """start_date of the sleep-summary requests made after the first ``since`` calls."""
+    calls = list(respx.calls)[since:]
+    return [c.request.url.params["start_date"] for c in calls if "/summaries/sleep" in str(c.request.url)]
+
+
 @respx.mock
 def test_refresh_maps_summaries_into_wearable_daily(client: TestClient, db: Session) -> None:
     org, admin, _me, a = linked_world(db)
@@ -404,12 +419,19 @@ def test_refresh_maps_summaries_into_wearable_daily(client: TestClient, db: Sess
     )
     r = client.post(f"{API}/orgs/{org.id}/athletes/{a.id}/wearables/refresh", headers=admin.headers, params={"days": 3})
     assert r.status_code == 200, r.text
-    rows = {(w.local_date.isoformat(), w.metric): w for w in db.scalars(select(WearableDaily))}
-    assert r.json()["updated"] == len(rows)
+    # every source is requested; AMS ranks them itself
+    summary_calls = [c for c in respx.calls if "/summaries/" in str(c.request.url)]
+    assert summary_calls and all(c.request.url.params.get("filter_by_priority") == "false" for c in summary_calls)
+    stored = list(db.scalars(select(WearableDaily)))
+    assert r.json()["updated"] == len(stored)
+    # one row per provider: d2 has WHOOP's recovery HRV and Oura's nightly HRV
+    values = {(w.local_date.isoformat(), w.metric, w.provider): w.value for w in stored}
+    assert (values[(d2, "hrv_rmssd_ms", "whoop")], values[(d2, "hrv_rmssd_ms", "oura")]) == (75, 60)
+    rows = {(w.local_date.isoformat(), w.metric): w for w in sorted(stored, key=lambda w: w.provider == "whoop")}
     assert rows[(d1, "sleep_duration_min")].value == 431
     assert rows[(d1, "sleep_deep_min")].value == 80 and rows[(d1, "sleep_efficiency_pct")].value == 91.7
     assert rows[(d1, "respiratory_rate")].unit == "br/min"
-    # HRV / RHR: the recovery value wins where present, otherwise the nightly value from sleep
+    # HRV / RHR: a provider's recovery value where present, otherwise its nightly value from sleep
     assert rows[(d2, "hrv_rmssd_ms")].value == 75 and rows[(d2, "hrv_rmssd_ms")].provider == "whoop"
     assert rows[(d1, "hrv_rmssd_ms")].value == 68.5 and rows[(d1, "hrv_rmssd_ms")].provider == "oura"
     assert rows[(d1, "hrv_rmssd_ms")].device == "Oura Ring Gen3"
@@ -424,11 +446,31 @@ def test_refresh_maps_summaries_into_wearable_daily(client: TestClient, db: Sess
         headers=admin.headers,
         params={"start": d1, "end": d2, "metrics": "hrv_rmssd_ms,steps"},
     ).json()
+    # one value per day from the best-ranked provider (default order: whoop before oura)
     assert [(p["local_date"], p["metric"], p["value"], p["provider"]) for p in pts] == [
         (d1, "hrv_rmssd_ms", 68.5, "oura"),
         (d1, "steps", 10234.0, "garmin"),
         (d2, "hrv_rmssd_ms", 75.0, "whoop"),
     ]
+    daily_url = f"{API}/orgs/{org.id}/athletes/{a.id}/wearables/daily"
+    every = client.get(
+        daily_url,
+        headers=admin.headers,
+        params={"start": d2, "end": d2, "metrics": "hrv_rmssd_ms", "all_sources": True},
+    ).json()
+    assert [(p["provider"], p["value"]) for p in every] == [("oura", 60.0), ("whoop", 75.0)]
+    # the athlete's own ranking takes effect at once, without a new pull
+    respx.get(f"{OW}/users/{OW_USER}/connections").mock(return_value=httpx.Response(200, json=[]))
+    prio = client.put(
+        f"{API}/orgs/{org.id}/athletes/{a.id}/wearables/priority", headers=admin.headers, json={"providers": ["oura"]}
+    )
+    assert prio.status_code == 200, prio.text
+    assert prio.json()["priority"] == ["oura"] and prio.json()["effective_priority"][:2] == ["oura", "apple"]
+    assert prio.json()["sources"] == ["oura", "garmin", "whoop", "withings"]
+    pts = client.get(
+        daily_url, headers=admin.headers, params={"start": d2, "end": d2, "metrics": "hrv_rmssd_ms"}
+    ).json()
+    assert [(p["provider"], p["value"]) for p in pts] == [("oura", 60.0)]
     assert (
         client.get(
             f"{API}/orgs/{org.id}/athletes/{a.id}/wearables/daily", headers=admin.headers, params={"metrics": "bogus"}
@@ -507,6 +549,26 @@ def test_webhook_endpoint(client: TestClient, db: Session) -> None:
     assert r.status_code == 204
     rows = db.scalars(select(WearableDaily).where(WearableDaily.athlete_id == a.id)).all()
     assert [(w.metric, w.value) for w in rows] == [("sleep_duration_min", 400)]
+    # the athlete's first sync copies the whole history window, later ones the last 7 days
+    assert sleep_starts() == [(today - dt.timedelta(days=settings.wearable_history_days - 1)).isoformat()]
+    db.expire_all()
+    assert db.get(Athlete, a.id).wearable_history_at is not None  # type: ignore[union-attr]
+    seen = len(respx.calls)
+    again = json.dumps({"type": "sleep.created", "data": {"user_id": str(OW_USER)}}).encode()
+    assert client.post(url, content=again, headers=signed(again, msg_id="msg_4")).status_code == 204
+    assert sleep_starts(seen) == [(today - dt.timedelta(days=6)).isoformat()]
+    # a Garmin backfill delivered history: copy the window again
+    seen = len(respx.calls)
+    backfill = json.dumps({"type": "sync.completed", "data": {"user_id": str(OW_USER), "source": "backfill"}}).encode()
+    assert client.post(url, content=backfill, headers=signed(backfill, msg_id="msg_5")).status_code == 204
+    assert sleep_starts(seen) == [(today - dt.timedelta(days=settings.wearable_history_days - 1)).isoformat()]
+    # a new provider connection: nothing pulled now, the next event copies history
+    seen = len(respx.calls)
+    created = json.dumps({"type": "connection.created", "data": {"user_id": str(OW_USER), "provider": "oura"}}).encode()
+    assert client.post(url, content=created, headers=signed(created, msg_id="msg_6")).status_code == 204
+    assert len(respx.calls) == seen
+    db.expire_all()
+    assert db.get(Athlete, a.id).wearable_history_at is None  # type: ignore[union-attr]
     # unknown OW user: accepted, no-op
     other = json.dumps({"type": "sync.completed", "data": {"user_id": str(uuid.uuid4())}}).encode()
     assert client.post(url, content=other, headers=signed(other, msg_id="msg_2")).status_code == 204
@@ -535,3 +597,71 @@ def test_nightly_refresh_task(db: Session) -> None:
     assert refresh_all_wearables.delay(7).get() == 1
     rows = db.scalars(select(WearableDaily)).all()
     assert [(w.metric, w.value, w.device) for w in rows] == [("steps", 5000, "Fenix 8")]
+
+
+@respx.mock
+def test_nightly_copies_history_after_a_new_connection(db: Session) -> None:
+    from app.tasks import refresh_all_wearables
+
+    _org, _admin, _me, a = linked_world(db)
+    a.wearable_history_at = dt.datetime(2026, 10, 5, tzinfo=dt.UTC)
+    db.commit()
+    today = today_in("UTC")
+    mock_summaries(today)
+
+    def connections(created: str) -> None:
+        respx.get(f"{OW}/users/{OW_USER}/connections").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "aaaaaaaa-0000-0000-0000-000000000001",
+                        "user_id": str(OW_USER),
+                        "provider": "garmin",
+                        "status": "active",
+                        "created_at": created,
+                        "updated_at": created,
+                    }
+                ],
+            )
+        )
+
+    connections("2026-10-01T10:00:00Z")  # connected before the last history copy: 7 days
+    refresh_all_wearables.delay(7).get()
+    assert sleep_starts() == [(today - dt.timedelta(days=6)).isoformat()]
+    seen = len(respx.calls)
+    connections("2026-10-06T10:00:00Z")  # connected since: the whole window
+    refresh_all_wearables.delay(7).get()
+    assert sleep_starts(seen) == [(today - dt.timedelta(days=settings.wearable_history_days - 1)).isoformat()]
+
+
+@respx.mock
+def test_history_endpoint_and_priority_permissions(client: TestClient, db: Session) -> None:
+    org, admin, me, a = linked_world(db)
+    today = today_in("UTC")
+    mock_summaries(today, sleep=[{"date": today.isoformat(), "source": source(), "duration_minutes": 400}])
+    respx.get(f"{OW}/users/{OW_USER}/connections").mock(return_value=httpx.Response(200, json=[]))
+    base = f"{API}/orgs/{org.id}/athletes/{a.id}/wearables"
+    r = client.post(f"{base}/history", headers=admin.headers)
+    assert r.status_code == 202 and r.json() == {"days": settings.wearable_history_days}
+    status = client.get(base, headers=admin.headers).json()
+    assert status["history_synced_at"] is not None and status["sources"] == ["oura"]
+    # invalid provider keys are refused; null goes back to the organization's ranking
+    assert client.put(f"{base}/priority", headers=admin.headers, json={"providers": ["Oura Ring"]}).status_code == 422
+    assert client.put(f"{base}/priority", headers=admin.headers, json={"providers": ["oura", "oura"]}).json()[
+        "priority"
+    ] == ["oura"]
+    r = client.patch(
+        f"{API}/orgs/{org.id}", headers=admin.headers, json={"settings": {"wearable_priority": ["garmin"]}}
+    )
+    assert r.status_code == 200 and r.json()["settings"]["wearable_priority"] == ["garmin"]
+    reset = client.put(f"{base}/priority", headers=admin.headers, json={"providers": None}).json()
+    assert reset["priority"] is None and reset["effective_priority"][:2] == ["garmin", "apple"]
+    # athletes cannot change it
+    assert client.put(f"{base}/priority", headers=me.headers, json={"providers": ["oura"]}).status_code in (403, 404)
+    # unlinked athletes have no history to pull
+    other = f.athlete(db, org, "No", "Link")
+    assert (
+        client.post(f"{API}/orgs/{org.id}/athletes/{other.id}/wearables/history", headers=admin.headers).status_code
+        == 409
+    )

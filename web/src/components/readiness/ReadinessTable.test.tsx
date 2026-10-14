@@ -36,18 +36,30 @@ const board: ReadinessBoard = {
   rows: [
     {
       athlete: { id: "a1", display_name: "Ana Ruiz", code: "A-0001", position: "100m" },
-      cells: { hooper: { value: 12, flag: "green", date: "2026-10-12" }, hrv: { value: -1.234, flag: "red", date: "2026-10-11" } },
+      cells: {
+        hooper: { value: 12, flag: "green", date: "2026-10-12", missing: null },
+        hrv: { value: -1.234, flag: "red", date: "2026-10-11", missing: null },
+      },
       due_forms: 0,
+      scheduled_forms: 1,
     },
     {
       athlete: { id: "a2", display_name: "Ben Cole", code: "A-0002", position: null },
-      cells: { hooper: { value: 19, flag: "amber", date: "2026-10-12" }, hrv: { value: null, flag: null, date: null } },
+      cells: {
+        hooper: { value: 19, flag: "amber", date: "2026-10-12", missing: null },
+        hrv: { value: null, flag: null, date: null, missing: null },
+      },
       due_forms: 2,
+      scheduled_forms: 1,
     },
     {
       athlete: { id: "a3", display_name: "Cy Dunn", code: "A-0003", position: null },
-      cells: { hooper: { value: 8, flag: "green", date: "2026-10-12" }, hrv: { value: 0.3, flag: "green", date: "2026-10-12" } },
+      cells: {
+        hooper: { value: 8, flag: "green", date: "2026-10-12", missing: null },
+        hrv: { value: 0.3, flag: "green", date: "2026-10-12", missing: null },
+      },
       due_forms: 1,
+      scheduled_forms: 1,
     },
   ],
 };
@@ -94,6 +106,61 @@ describe("readiness board", () => {
     expect(benCells[1]).toHaveAttribute("data-flag", "missing");
     expect(within(benCells[1]!).getByText("No data")).toBeInTheDocument();
     expect(within(ben).getByText("forms due", { exact: false })).toBeInTheDocument();
+  });
+
+  it("says why a cell is empty, and when nothing is scheduled", () => {
+    const explained: ReadinessBoard = {
+      ...board,
+      rows: [
+        {
+          ...board.rows[1]!,
+          cells: {
+            hooper: {
+              value: null,
+              flag: null,
+              date: null,
+              missing: { reason: "stale", source: "form:x.y", last_date: "2026-10-04", have: null, need: null, window: null, same_source: false },
+            },
+            hrv: {
+              value: null,
+              flag: null,
+              date: null,
+              missing: {
+                reason: "building",
+                source: "wearable:hrv_rmssd_ms",
+                last_date: "2026-10-12",
+                have: 8,
+                need: 21,
+                window: 60,
+                same_source: true,
+              },
+            },
+          },
+          due_forms: 0,
+          scheduled_forms: 0,
+        },
+      ],
+    };
+    render(
+      <TooltipProvider>
+        <ReadinessTable
+          board={explained}
+          sort={{ kind: "priority" }}
+          dir="desc"
+          onSortChange={() => {}}
+          filter={null}
+          athleteLabel="Athlete"
+          onRowClick={() => {}}
+        />
+      </TooltipProvider>,
+    );
+    const cells = within(screen.getByText("Ben Cole").closest("tr")!).getAllByRole("cell");
+    expect(cells[0]).toHaveAttribute("data-missing", "stale");
+    expect(cells[0]).toHaveTextContent("8d ago");
+    expect(cells[1]).toHaveAttribute("data-missing", "building");
+    expect(cells[1]).toHaveTextContent("8/21d");
+    expect(within(cells[1]!).getByText(/^Baseline building: 8 of 21 days from the same device/)).toHaveClass("sr-only");
+    expect(within(cells[2]!).getByText("No forms scheduled")).toHaveClass("sr-only");
   });
 
   it("summarises red, amber, missing and due counts", () => {

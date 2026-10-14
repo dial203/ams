@@ -125,14 +125,21 @@ recomputes on every write. Both pass `spec/*.json`.
 | Link | Creating the link makes an OW user with `external_user_id = <athlete uuid>`, stored as `athlete.ow_user_id` |
 | Cloud providers (Garmin, Oura, Whoop, Polar, ...) | AMS asks OW `GET /api/v1/oauth/{provider}/authorize` for the athlete and returns the URL. Web shows it as a link/QR, mobile opens it in an auth session. `account_type` / `account_label` pass through for validation studies (e.g. two units worn at once) |
 | Apple Health / Health Connect / Samsung | Mobile asks AMS for an SDK token; AMS calls OW `POST /api/v1/users/{ow_user_id}/token` with its OW app credentials and returns it. The OW React Native SDK in the app pushes health-store data straight to OW |
-| New data | OW sends svix-signed webhooks (`sync.completed`, `connection.*`) to `POST /api/v1/integrations/open-wearables/webhook`. The worker refreshes that athlete's `wearable_daily` rows. A nightly job re-pulls the last 7 days for every linked athlete as a safety net |
+| New data | OW sends svix-signed webhooks (`sync.completed`, `connection.*`) to `POST /api/v1/integrations/open-wearables/webhook`. The worker refreshes that athlete's `wearable_daily` rows (the last 7 days). A nightly job does the same for every linked athlete as a safety net |
+| History | The full window (`WEARABLE_HISTORY_DAYS`, default 365) is copied on an athlete's first sync, after a `sync.completed` whose source is `backfill` (Garmin history) or `xml_import` (Apple Health export), on the first sync after a new provider connection (`connection.created` clears `athlete.wearable_history_at`), by the nightly job when a provider was connected since the last copy, and on request ("Pull history" on the athlete's Wearables tab) |
 | Deep data | Staff views that need raw timeseries or workouts proxy to OW on demand, they are not copied |
 
 `wearable_daily` is long-format: `(athlete_id, local_date, metric, value, provider,
-device)`. AMS requests OW summaries with `filter_by_priority=true` (one winner per day,
-per OW's priority settings) and records which source won. For method-comparison work,
-query OW directly with `filter_by_priority=false`; see the OW guide
-`docs/dev-guides/consuming-all-data.md`.
+device)`, one row per provider. AMS requests OW summaries with `filter_by_priority=false`
+(every source) and chooses the source itself, because OW's priority settings are global to
+the OW deployment and need an OW developer login. Within a provider the device type decides
+(chest strap, watch, band, ring, phone). Readers (metrics, the daily endpoint) then take, per
+athlete, day and metric, the best-ranked provider that has a value: the athlete's ranking
+(`athlete.wearable_priority`), else the organization's (`settings.wearable_priority`), then OW's
+default order for providers neither lists. Changing a ranking needs no re-pull. A day that falls
+to a lower-ranked provider carries that provider's source label, so same-source baselines skip it.
+For method-comparison work, `GET .../wearables/daily?all_sources=true` returns every provider's
+value; for raw data query OW directly (OW guide `docs/dev-guides/consuming-all-data.md`).
 
 ### Adding manufacturers
 

@@ -49,6 +49,7 @@ type Organization = {
   settings: {
     terminology: Terminology;
     readiness_metrics: string[];                                     // metric slugs shown on the readiness board, in order
+    wearable_priority: string[];                                     // OW provider keys, best first, for athletes without their own ranking ([]: OW's default order)
   };
   created_at: ISODateTime;
 };
@@ -190,7 +191,14 @@ type WearableConnection = {
   last_synced_at: ISODateTime | null; created_at: ISODateTime | null;
   devices: string[];                                         // humanized observed devices, most recent first
 };
-type WearableStatus = { linked: boolean; ow_user_id: UUID | null; connections: WearableConnection[] };
+type WearableStatus = {
+  linked: boolean; ow_user_id: UUID | null; connections: WearableConnection[];
+  priority: string[] | null;            // the athlete's own provider ranking; null: the organization's
+  effective_priority: string[];         // the ranking in force: athlete's, else organization's, then OW's default order for the rest
+  sources: string[];                    // providers with daily data in AMS for this athlete, best ranked first
+  history_synced_at: ISODateTime | null;   // last copy of the full history window (WEARABLE_HISTORY_DAYS) from OW
+};
+type WearablePriorityUpdate = { providers: string[] | null };   // provider keys ([a-z0-9_], max 32), best first; null: use the organization's
 type ConnectRequest = { provider: string; account_type?: string | null; account_label?: string | null; redirect_uri?: string | null;
                         new_account?: boolean | null };   // true: add another account with this provider (OW new_account)
 type ConnectResponse = { authorization_url: string };
@@ -220,11 +228,28 @@ type SeriesSource = { ref: SeriesRef; label: string; unit: string | null; kind: 
 type MetricPoint = { date: ISODate; value: number | null; flag: Flag; source: string | null };   // source: provider/device for wearable-based points
 type MetricSeries = { metric: MetricDefinition; athlete_id: UUID; points: MetricPoint[] };
 
-type ReadinessCell = { value: number | null; flag: Flag; date: ISODate | null };   // latest value on or before the board date within 3 days
+type ReadinessCell = { value: number | null; flag: Flag; date: ISODate | null; missing: ReadinessMissing | null };   // latest value on or before the board date within 3 days; missing set exactly when value is null
+type ReadinessMissing = {
+  reason:
+    | "restricted"   // the caller cannot read the metric's source form for this athlete (nothing else is revealed)
+    | "no_source"    // the source at the end of the metric chain does not exist (e.g. the form was never created)
+    | "not_linked"   // wearable source, no data, and the athlete has no Open Wearables link
+    | "no_data"      // nothing recorded for this athlete on or before the board date
+    | "stale"        // the last data (last_date) is older than the 3-day window
+    | "building"     // data in the window, but fewer observed days than the transform needs (have < need)
+    | "no_value";    // requirements met but the value is undefined (e.g. a zero baseline SD)
+  source: SeriesRef | null;   // the form or wearable source at the end of the metric chain (null when restricted)
+  last_date: ISODate | null;  // stale / building / no_value: last day with source data on or before the board date
+  have: number | null;        // building: observed days so far
+  need: number | null;        // building: observed days required
+  window: number | null;      // building: days counted over, ending on last_date (null = all history)
+  same_source: boolean;       // building: only days from that day's provider/device count (baselines)
+};
 type ReadinessRow = {
   athlete: { id: UUID; display_name: string; code: string; position: string | null };
   cells: Record<string, ReadinessCell>;         // keyed by metric slug
   due_forms: number;                            // forms due today not yet submitted
+  scheduled_forms: number;                      // published forms with a schedule in force for the athlete's groups (0: nothing is ever due)
 };
 type ReadinessBoard = { date: ISODate; group_id: UUID | null; columns: MetricDefinition[]; rows: ReadinessRow[] };
 
@@ -356,7 +381,9 @@ All require the caller to be an athlete in the org (`membership.athlete_id`).
 | POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/link` | → `WearableStatus` | write. Idempotent; creates the OW user |
 | POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/connect` | `ConnectRequest` → `ConnectResponse` | write. Links first if needed |
 | POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/refresh` | `?days=7` → `{updated: number}` | write. Pulls OW daily summaries into `wearable_daily` now (409 when not linked) |
-| GET | `/orgs/{org_id}/athletes/{athlete_id}/wearables/daily` | `?start&end&metrics=a,b` → `WearableDailyPoint[]` | visible |
+| POST | `/orgs/{org_id}/athletes/{athlete_id}/wearables/history` | → 202 `{days: number}` | write. Queues a copy of the last `WEARABLE_HISTORY_DAYS` (default 365) from OW (409 when not linked, 503 when OW is not configured) |
+| PUT | `/orgs/{org_id}/athletes/{athlete_id}/wearables/priority` | `WearablePriorityUpdate` → `WearableStatus` | write. The athlete's provider ranking; applies to stored data at once. Audited |
+| GET | `/orgs/{org_id}/athletes/{athlete_id}/wearables/daily` | `?start&end&metrics=a,b&all_sources` → `WearableDailyPoint[]` | visible. One point per day and metric from the best-ranked provider that has one; `all_sources=true`: every provider's |
 | POST | `/integrations/open-wearables/webhook` | svix-signed OW event → 204 | Public; verified with `OW_WEBHOOK_SECRET` (401 bad or stale signature, 503 when unset). Unknown OW users are a no-op |
 
 ### Metrics and dashboards
@@ -404,5 +431,5 @@ All with header `X-Open-Wearables-API-Key: $OW_API_KEY` unless noted.
 | Connect URL | `GET /api/v1/oauth/{provider}/authorize?user_id&redirect_uri&new_account&account_type&account_label` |
 | Connections | `GET /api/v1/users/{user_id}/connections` |
 | SDK token | `POST /api/v1/users/{user_id}/token` body `{app_id: $OW_APP_ID, app_secret: $OW_APP_SECRET}` (no API key) |
-| Daily data | `GET /api/v1/users/{user_id}/summaries/{sleep,recovery,activity}?start_date&end_date` (OW's default `filter_by_priority=true` on summaries) |
+| Daily data | `GET /api/v1/users/{user_id}/summaries/{sleep,recovery,activity}?start_date&end_date&filter_by_priority=false` (every source; AMS ranks providers itself) |
 | Weight / body fat | `GET /api/v1/users/{user_id}/timeseries?types=weight,body_fat_percentage&start_time&end_time&resolution=raw` (`/summaries/body` carries no measurement dates) |

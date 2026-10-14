@@ -7,6 +7,12 @@ Source attribution: ``provider`` is OW's ingestion provider; ``device`` is OW's
 ``source.device_name`` (marketing name derived from the raw model string, so it is stable)
 falling back to the raw ``source.device``. Baselines group days by ``provider/device``.
 
+Source selection: AMS asks OW for every source (``filter_by_priority=false``) and stores one row
+per day, metric and provider; within a provider the device type decides (``DEVICE_TYPE_PRIORITY``).
+Readers then pick one provider per athlete, day and metric with :func:`provider_order`: the
+athlete's ranking, else the organization's, then ``DEFAULT_PROVIDER_PRIORITY`` for the rest. A day
+the first provider has no value for falls to the next one that has.
+
 OW's recovery summaries are currently only produced for WHOOP, so ``hrv_rmssd_ms`` and
 ``resting_hr_bpm`` fall back to the nightly values from the sleep summary of the same day and
 source when no recovery row exists (the recovery value wins when both exist).
@@ -51,6 +57,46 @@ WEARABLE_METRICS: dict[str, tuple[str, str]] = {
 }
 
 
+# Open Wearables' default provider order for a fresh deployment (DEFAULT_PROVIDER_PRIORITY there).
+DEFAULT_PROVIDER_PRIORITY: tuple[str, ...] = (
+    "apple",
+    "garmin",
+    "polar",
+    "suunto",
+    "whoop",
+    "fitbit",
+    "google_health",
+    "health_connect",
+    "oura",
+    "samsung",
+    "sensorbio",
+    "strava",
+    "ultrahuman",
+    "withings",
+)
+# Within one provider (e.g. an Apple Watch and an iPhone), as in Open Wearables' default.
+DEVICE_TYPE_PRIORITY: tuple[str, ...] = ("chest_strap", "watch", "band", "ring", "phone", "scale", "other")
+
+
+def provider_order(athlete: list[str] | None, org: list[str] | None) -> list[str]:
+    """The ranking in force: the athlete's, else the organization's, then the default order."""
+    head = list(dict.fromkeys(athlete or org or []))
+    return head + [p for p in DEFAULT_PROVIDER_PRIORITY if p not in head]
+
+
+def provider_rank(order: list[str], provider: str) -> tuple[int, str]:
+    """Sort key: lower wins; providers missing from ``order`` come last, by name."""
+    try:
+        return order.index(provider), ""
+    except ValueError:
+        return len(order), provider
+
+
+def _device_rank(device_type: str | None, device: str | None) -> tuple[int, str]:
+    kind = DEVICE_TYPE_PRIORITY.index(device_type) if device_type in DEVICE_TYPE_PRIORITY else len(DEVICE_TYPE_PRIORITY)
+    return kind, device or ""
+
+
 @dataclass(frozen=True)
 class DailyPoint:
     local_date: dt.date
@@ -58,6 +104,7 @@ class DailyPoint:
     value: float
     provider: str
     device: str | None
+    device_type: str | None = None
 
     @property
     def unit(self) -> str:
@@ -77,7 +124,7 @@ def source_device(source: OWSource | None) -> str | None:
 def _point(day: dt.date, metric: str, value: float | int | None, source: OWSource) -> DailyPoint | None:
     if value is None:
         return None
-    return DailyPoint(day, metric, float(value), source.provider, source_device(source))
+    return DailyPoint(day, metric, float(value), source.provider, source_device(source), source.device_type)
 
 
 def map_sleep(rows: list[OWSleepSummary]) -> list[DailyPoint]:
@@ -144,30 +191,35 @@ def map_body(samples: list[OWTimeSeriesSample], tz: ZoneInfo) -> list[DailyPoint
         if metric is None or s.source is None:
             continue
         day = _sample_local_date(s, tz)
-        point = DailyPoint(day, metric, float(s.value), s.source.provider, source_device(s.source))
-        key = point.key
+        point = DailyPoint(
+            day, metric, float(s.value), s.source.provider, source_device(s.source), s.source.device_type
+        )
+        key = (*point.key, point.device or "")
         if key not in latest or s.timestamp >= latest[key][0]:
             latest[key] = (s.timestamp, point)
     return [p for _, p in latest.values()]
 
 
 def with_fallbacks(points: list[DailyPoint]) -> list[DailyPoint]:
-    """Fill hrv_rmssd_ms / resting_hr_bpm from the sleep summary where recovery has nothing that day."""
-    have = {(p.local_date, p.metric) for p in points}
+    """Fill hrv_rmssd_ms / resting_hr_bpm from the same provider's sleep summary where its recovery
+    summary has nothing that day."""
+    have = {p.key for p in points}
     extra: list[DailyPoint] = []
     for p in points:
         target = {"sleep_hrv_rmssd_ms": "hrv_rmssd_ms", "sleep_resting_hr_bpm": "resting_hr_bpm"}.get(p.metric)
-        if target and (p.local_date, target) not in have:
-            extra.append(DailyPoint(p.local_date, target, p.value, p.provider, p.device))
-            have.add((p.local_date, target))
+        if target and (p.local_date, target, p.provider) not in have:
+            extra.append(DailyPoint(p.local_date, target, p.value, p.provider, p.device, p.device_type))
     return points + extra
 
 
 def dedupe(points: list[DailyPoint]) -> list[DailyPoint]:
-    """One point per (date, metric, provider); the later one in the list wins."""
+    """One point per (date, metric, provider): the best device type, then the device name; among
+    equals the later one in the list wins."""
     out: dict[tuple[dt.date, str, str], DailyPoint] = {}
     for p in points:
-        out[p.key] = p
+        cur = out.get(p.key)
+        if cur is None or _device_rank(p.device_type, p.device) <= _device_rank(cur.device_type, cur.device):
+            out[p.key] = p
     return list(out.values())
 
 

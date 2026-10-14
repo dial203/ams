@@ -17,6 +17,7 @@ from app.schemas.common import (
     Sensitivity,
     Sex,
     SubmissionSource,
+    check_provider_order,
 )
 from app.timeutil import is_valid_timezone
 
@@ -433,6 +434,20 @@ class WearableStatus(BaseModel):
     linked: bool
     ow_user_id: uuid.UUID | None
     connections: list[WearableConnectionOut]
+    priority: list[str] | None  # the athlete's own provider ranking; null: the organization's
+    effective_priority: list[str]  # the ranking in force, the default order appended
+    sources: list[str]  # providers with daily data in AMS for this athlete, best ranked first
+    history_synced_at: dt.datetime | None  # last full history copy from Open Wearables
+
+
+class WearablePriorityUpdate(BaseModel):
+    providers: list[str] | None  # null: use the organization's ranking
+
+    _providers = field_validator("providers")(check_provider_order)
+
+
+class HistoryPullOut(BaseModel):
+    days: int
 
 
 class ConnectRequest(BaseModel):
@@ -562,10 +577,24 @@ class MetricSeries(BaseModel):
     points: list[MetricPoint]
 
 
+MissingReason = Literal["restricted", "no_source", "not_linked", "no_data", "stale", "building", "no_value"]
+
+
+class ReadinessMissing(BaseModel):
+    reason: MissingReason
+    source: str | None  # the form or wearable source at the end of the metric chain
+    last_date: dt.date | None  # last day with source data on or before the board date
+    have: int | None  # building: observed days so far
+    need: int | None  # building: observed days required
+    window: int | None  # building: days counted over, ending on last_date (null = all history)
+    same_source: bool  # building: only days from the same provider/device count
+
+
 class ReadinessCell(BaseModel):
     value: float | None
     flag: Flag
     date: dt.date | None
+    missing: ReadinessMissing | None
 
 
 class ReadinessAthlete(BaseModel):
@@ -579,6 +608,7 @@ class ReadinessRow(BaseModel):
     athlete: ReadinessAthlete
     cells: dict[str, ReadinessCell]
     due_forms: int
+    scheduled_forms: int
 
 
 class ReadinessBoard(BaseModel):

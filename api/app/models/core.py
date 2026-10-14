@@ -154,6 +154,10 @@ class Athlete(Base):
     attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user_account.id", ondelete="SET NULL"), index=True)
     ow_user_id: Mapped[uuid.UUID | None] = mapped_column(index=True)
+    # wearable provider ranking for this athlete (null: the organization's)
+    wearable_priority: Mapped[list[str] | None] = mapped_column(JSONB)
+    # last time wearable history (settings.wearable_history_days) was copied from Open Wearables
+    wearable_history_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), default=utcnow, onupdate=utcnow

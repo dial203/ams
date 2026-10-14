@@ -7,11 +7,12 @@ import {
   type ConnectRequest,
   type WearableDailyPoint,
   type WearableProvider,
+  type WearableStatus,
 } from "@ams/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Link2, Plug, RefreshCw, Watch } from "lucide-react";
+import { ExternalLink, History, Link2, Plug, RefreshCw, Watch } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { CopyButton } from "@/components/CopyButton";
@@ -31,7 +32,8 @@ import { toastError } from "@/lib/errors";
 import { formatNumber } from "@/lib/field-format";
 import { useOrg } from "@/lib/org";
 import { useWearableProviders } from "@/lib/queries";
-import { isNotConfigured, relativeTime, wearableMetricLabel } from "@/lib/wearables";
+import { ProviderRanking } from "@/components/wearables/ProviderRanking";
+import { isNotConfigured, providerLabel, relativeTime, wearableMetricLabel } from "@/lib/wearables";
 
 const DAYS = 28;
 
@@ -62,10 +64,27 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
   const qc = useQueryClient();
   const { orgId, today, terms } = useOrg();
   const [connectOpen, setConnectOpen] = useState(false);
+  // set while a history copy queued from here runs: poll until history_synced_at moves past it
+  const [historySince, setHistorySince] = useState<string | null>(null);
   const status = useQuery({
     queryKey: queryKeys.wearables.status(orgId, athlete.id),
     queryFn: ({ signal }) => api.wearables.status(orgId, athlete.id, { signal }),
+    refetchInterval: historySince ? 3000 : false,
   });
+  const copiedAt = status.data?.history_synced_at ?? null;
+  useEffect(() => {
+    if (!historySince || !copiedAt || copiedAt <= historySince) return;
+    setHistorySince(null);
+    void qc.invalidateQueries({ queryKey: queryKeys.wearables.athlete(orgId, athlete.id) });
+    void qc.invalidateQueries({ queryKey: queryKeys.metrics.allSeries(orgId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.dashboards.all(orgId) });
+    toast.success("Wearable history copied");
+  }, [historySince, copiedAt, qc, orgId, athlete.id]);
+  useEffect(() => {
+    if (!historySince) return;
+    const t = setTimeout(() => setHistorySince(null), 120_000); // stop polling; the copy may still finish
+    return () => clearTimeout(t);
+  }, [historySince]);
   const providers = useWearableProviders();
   const providerName = (p: string) => providers.data?.find((x) => x.provider === p)?.name ?? p;
 
@@ -86,6 +105,19 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
       void qc.invalidateQueries({ queryKey: queryKeys.metrics.allSeries(orgId) });
     },
     onError: (e) => toastError(e, "Refresh failed"),
+  });
+  const history = useMutation({
+    mutationFn: () => api.wearables.history(orgId, athlete.id),
+    onMutate: () => setHistorySince(new Date().toISOString()),
+    onSuccess: (r) => {
+      toast.success("Copying wearable history", {
+        description: `The last ${r.days} days from Open Wearables. This can take a minute.`,
+      });
+    },
+    onError: (e) => {
+      setHistorySince(null);
+      toastError(e, "Could not pull history");
+    },
   });
 
   if (status.isPending) return <Skeleton className="h-48" />;
@@ -111,7 +143,9 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
             </CardTitle>
             <CardDescription>
               {s.linked
-                ? `Open Wearables user ${s.ow_user_id ?? ""}`
+                ? `Open Wearables user ${s.ow_user_id ?? ""} · ${
+                    s.history_synced_at ? `history copied ${relativeTime(s.history_synced_at)}` : "history not copied yet"
+                  }`
                 : `Link this ${terms.athlete.toLowerCase()} to Open Wearables to connect devices.`}
             </CardDescription>
           </div>
@@ -125,6 +159,16 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
             <Button size="sm" variant="outline" onClick={() => refresh.mutate()} disabled={!s.linked || refresh.isPending || owMissing}>
               <RefreshCw className={refresh.isPending ? "animate-spin" : undefined} />
               Refresh now
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => history.mutate()}
+              disabled={!s.linked || history.isPending || !!historySince || owMissing}
+              title="Copy the full history window from Open Wearables, e.g. after a provider delivered older data"
+            >
+              {historySince ? <Spinner className="text-current" /> : <History />}
+              {historySince ? "Pulling history…" : "Pull history"}
             </Button>
             <Button size="sm" onClick={() => setConnectOpen(true)} disabled={owMissing}>
               <Plug /> Connect provider
@@ -176,6 +220,7 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
           )}
         </CardContent>
       </Card>
+      <SourcePriority athlete={athlete} status={s} providers={providers.data} />
       <DailyData athlete={athlete} start={addDays(today, -(DAYS - 1))} end={today} />
       <ConnectDialog
         athlete={athlete}
@@ -186,6 +231,105 @@ export function WearablesTab({ athlete }: { athlete: Athlete }) {
         connectedProviders={s.connections.map((c) => c.provider)}
       />
     </div>
+  );
+}
+
+/** Which provider wins each day: the athlete's own ranking or the organization's. */
+function SourcePriority({
+  athlete,
+  status,
+  providers,
+}: {
+  athlete: Athlete;
+  status: WearableStatus;
+  providers: WearableProvider[] | undefined;
+}) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const { orgId, terms } = useOrg();
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const connected = status.connections.map((c) => c.provider);
+  // the providers that matter for this athlete, in the order in force
+  const relevant = status.effective_priority.filter((p) => status.sources.includes(p) || connected.includes(p));
+  const extra = [...status.sources, ...connected].filter((p) => !status.effective_priority.includes(p));
+  const shown = [...relevant, ...new Set(extra)];
+  const save = useMutation({
+    mutationFn: (providersInOrder: string[] | null) =>
+      api.wearables.setPriority(orgId, athlete.id, { providers: providersInOrder }),
+    onSuccess: (next) => {
+      qc.setQueryData(queryKeys.wearables.status(orgId, athlete.id), next);
+      void qc.invalidateQueries({ queryKey: queryKeys.wearables.athlete(orgId, athlete.id) });
+      void qc.invalidateQueries({ queryKey: queryKeys.metrics.allSeries(orgId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.dashboards.all(orgId) });
+      setDraft(null);
+      toast.success(next.priority ? "Source priority saved" : "Using the organization’s source priority");
+    },
+    onError: (e) => toastError(e, "Could not save the source priority"),
+  });
+  const note = (p: string) =>
+    [status.sources.includes(p) ? "has data" : null, connected.includes(p) ? "connected" : null].filter(Boolean).join(" · ") || null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            Source priority
+            {status.priority ? <Badge>Custom</Badge> : <Badge variant="muted">Organization default</Badge>}
+          </CardTitle>
+          <CardDescription>
+            Each day’s value comes from the first provider below that has one; a lower one fills days the first has nothing for.
+            Z-score baselines only count days from the same device.
+          </CardDescription>
+        </div>
+        {draft === null && (
+          <div className="flex flex-wrap gap-2">
+            {status.priority && (
+              <Button size="sm" variant="ghost" onClick={() => save.mutate(null)} disabled={save.isPending}>
+                Use organization default
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setDraft(shown.length ? shown : [])}>
+              Change
+            </Button>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="grid gap-3 py-4">
+        {draft !== null ? (
+          <>
+            <ProviderRanking
+              value={draft}
+              onChange={setDraft}
+              providers={providers}
+              badges={note}
+              label={`Source priority for ${athlete.display_name}`}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setDraft(null)}>
+                Cancel
+              </Button>
+              <Button onClick={() => save.mutate(draft.length ? draft : null)} disabled={save.isPending}>
+                {save.isPending && <Spinner className="text-current" />}
+                Save for this {terms.athlete.toLowerCase()}
+              </Button>
+            </div>
+          </>
+        ) : shown.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No provider has sent data yet.</p>
+        ) : (
+          <ol className="grid gap-1" aria-label="Source priority in use">
+            {shown.map((p, i) => (
+              <li key={p} className="flex items-center gap-2 text-sm">
+                <span className="w-5 text-xs text-muted-foreground tabular">{i + 1}</span>
+                <span className="font-medium">{providerLabel(p, providers)}</span>
+                {note(p) && <span className="text-xs text-muted-foreground">{note(p)}</span>}
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -211,7 +355,7 @@ function DailyData({ athlete, start, end }: { athlete: Athlete; start: string; e
       <CardHeader>
         <div>
           <CardTitle>Daily wearable data</CardTitle>
-          <CardDescription>Last {DAYS} days from the AMS cache (one source per day, by Open Wearables priority)</CardDescription>
+          <CardDescription>Last {DAYS} days from the AMS cache (one source per day, by the source priority above)</CardDescription>
         </div>
       </CardHeader>
       <CardContent className="p-0">

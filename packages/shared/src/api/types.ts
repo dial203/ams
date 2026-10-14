@@ -37,6 +37,8 @@ export type OrganizationSettings = {
   terminology: Terminology;
   /** Metric slugs shown on the readiness board, in order. */
   readiness_metrics: string[];
+  /** Open Wearables provider keys, best first, for athletes without their own ranking ([]: OW's default order). */
+  wearable_priority: string[];
 };
 
 export type Organization = {
@@ -314,7 +316,21 @@ export type WearableConnection = {
   devices: string[];
 };
 
-export type WearableStatus = { linked: boolean; ow_user_id: UUID | null; connections: WearableConnection[] };
+export type WearableStatus = {
+  linked: boolean;
+  ow_user_id: UUID | null;
+  connections: WearableConnection[];
+  /** The athlete's own provider ranking; null: the organization's. */
+  priority: string[] | null;
+  /** The ranking in force: athlete's, else organization's, then OW's default order for the rest. */
+  effective_priority: string[];
+  /** Providers with daily data in AMS for this athlete, best ranked first. */
+  sources: string[];
+  /** Last copy of the full history window (WEARABLE_HISTORY_DAYS) from OW. */
+  history_synced_at: ISODateTime | null;
+};
+/** Provider keys ([a-z0-9_], max 32), best first; null: use the organization's. */
+export type WearablePriorityUpdate = { providers: string[] | null };
 
 export type ConnectRequest = {
   provider: string;
@@ -356,6 +372,27 @@ export type WearableMetric =
   | "vigorous_min"
   | "weight_kg"
   | "body_fat_pct";
+
+/**
+ * Open Wearables' default provider order, which AMS appends after an organization's or athlete's own
+ * ranking (DEFAULT_PROVIDER_PRIORITY in api/app/integrations/open_wearables/daily.py).
+ */
+export const WEARABLE_PROVIDER_DEFAULT_ORDER: readonly string[] = [
+  "apple",
+  "garmin",
+  "polar",
+  "suunto",
+  "whoop",
+  "fitbit",
+  "google_health",
+  "health_connect",
+  "oura",
+  "samsung",
+  "sensorbio",
+  "strava",
+  "ultrahuman",
+  "withings",
+];
 
 export const WEARABLE_METRICS: readonly WearableMetric[] = [
   "sleep_duration_min",
@@ -435,14 +472,49 @@ export type SeriesSource = { ref: SeriesRef; label: string; unit: string | null;
 export type MetricPoint = { date: ISODate; value: number | null; flag: Flag; source: string | null };
 export type MetricSeries = { metric: MetricDefinition; athlete_id: UUID; points: MetricPoint[] };
 
-/** Latest value on or before the board date within 3 days. */
-export type ReadinessCell = { value: number | null; flag: Flag; date: ISODate | null };
+/** Latest value on or before the board date within 3 days; `missing` is set exactly when `value` is null. */
+export type ReadinessCell = { value: number | null; flag: Flag; date: ISODate | null; missing: ReadinessMissing | null };
+
+export type MissingReason =
+  /** The caller cannot read the metric's source form for this athlete (nothing else is revealed). */
+  | "restricted"
+  /** The source at the end of the metric chain does not exist (e.g. the form was never created). */
+  | "no_source"
+  /** Wearable source, no data, and the athlete has no Open Wearables link. */
+  | "not_linked"
+  /** Nothing recorded for this athlete on or before the board date. */
+  | "no_data"
+  /** The last data (`last_date`) is older than the 3-day window. */
+  | "stale"
+  /** Data in the window, but fewer observed days than the transform needs (`have` < `need`). */
+  | "building"
+  /** Requirements met but the value is undefined (e.g. a zero baseline SD). */
+  | "no_value";
+
+export type ReadinessMissing = {
+  reason: MissingReason;
+  /** The form or wearable source at the end of the metric chain (null when restricted). */
+  source: SeriesRef | null;
+  /** stale / building / no_value: last day with source data on or before the board date. */
+  last_date: ISODate | null;
+  /** building: observed days so far. */
+  have: number | null;
+  /** building: observed days required. */
+  need: number | null;
+  /** building: days counted over, ending on `last_date` (null = all history). */
+  window: number | null;
+  /** building: only days from that day's provider/device count (baselines). */
+  same_source: boolean;
+};
+
 export type ReadinessRow = {
   athlete: { id: UUID; display_name: string; code: string; position: string | null };
   /** Keyed by metric slug. */
   cells: Record<string, ReadinessCell>;
   /** Forms due today not yet submitted. */
   due_forms: number;
+  /** Published forms with a schedule in force for the athlete's groups (0: nothing is ever due). */
+  scheduled_forms: number;
 };
 export type ReadinessBoard = { date: ISODate; group_id: UUID | null; columns: MetricDefinition[]; rows: ReadinessRow[] };
 
@@ -511,6 +583,7 @@ export type SubmissionUpdate = { values?: Record<string, unknown>; observed_at?:
 export type SelfSubmissionCreate = Omit<SubmissionCreate, "athlete_id">;
 
 export type WearableRefreshResponse = { updated: number };
+export type WearableHistoryResponse = { days: number };
 
 // ---------------------------------------------------------------------------
 // Query parameters. `null`/`undefined` values are omitted from the URL.
@@ -552,7 +625,8 @@ export type SelfSubmissionListParams = PageParams & {
 };
 export type DateRangeParams = { start?: Opt<ISODate>; end?: Opt<ISODate> };
 export type WearableRefreshParams = { days?: Opt<number> };
-export type WearableDailyParams = DateRangeParams & { metrics?: Opt<readonly WearableMetric[]> };
+/** `all_sources`: every provider's value, not only the best ranked. */
+export type WearableDailyParams = DateRangeParams & { metrics?: Opt<readonly WearableMetric[]>; all_sources?: Opt<boolean> };
 export type MetricSeriesParams = DateRangeParams & { athlete_id: UUID };
 export type ReadinessParams = { group_id?: Opt<UUID>; date?: Opt<ISODate> };
 export type AuditListParams = PageParams & { entity_type?: Opt<string>; entity_id?: Opt<UUID> };

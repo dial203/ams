@@ -73,6 +73,8 @@ import type {
   ValidateSchemaResponse,
   WearableDailyParams,
   WearableDailyPoint,
+  WearableHistoryResponse,
+  WearablePriorityUpdate,
   WearableProvider,
   WearableRefreshParams,
   WearableRefreshResponse,
@@ -569,7 +571,16 @@ export function createApiClient(options: ApiClientOptions) {
           query: params,
           ...o,
         }),
-      /** `GET /orgs/{org_id}/athletes/{athlete_id}/wearables/daily?start&end&metrics=a,b` */
+      /** `POST /orgs/{org_id}/athletes/{athlete_id}/wearables/history` (202: queued) */
+      history: (orgId: UUID, athleteId: UUID, o?: RequestOptions) =>
+        post<WearableHistoryResponse>(`${org(orgId)}${path`/athletes/${athleteId}/wearables/history`}`, undefined, o),
+      /** `PUT /orgs/{org_id}/athletes/{athlete_id}/wearables/priority` */
+      setPriority: (orgId: UUID, athleteId: UUID, body: WearablePriorityUpdate, o?: RequestOptions) =>
+        request<WearableStatus>("PUT", `${org(orgId)}${path`/athletes/${athleteId}/wearables/priority`}`, {
+          body,
+          ...o,
+        }),
+      /** `GET /orgs/{org_id}/athletes/{athlete_id}/wearables/daily?start&end&metrics=a,b&all_sources` */
       daily: (orgId: UUID, athleteId: UUID, params?: WearableDailyParams, o?: RequestOptions) =>
         get<WearableDailyPoint[]>(`${org(orgId)}${path`/athletes/${athleteId}/wearables/daily`}`, params, o),
     },

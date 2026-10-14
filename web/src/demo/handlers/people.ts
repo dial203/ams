@@ -13,7 +13,7 @@ import {
   type UUID,
 } from "@ams/shared";
 import { isFixtureError } from "../fixture";
-import { fail, has, invalidBody, json, noContent, paginate, replay, requiredString } from "../http";
+import { fail, has, invalidBody, json, noContent, paginate, providerOrder, replay, requiredString } from "../http";
 import { route, type Ctx, type RouteDef } from "../router";
 import { clone, newId, nowIso, type DemoStore } from "../store";
 
@@ -235,6 +235,9 @@ export const peopleRoutes: RouteDef[] = [
       }
       if (Array.isArray(settings.readiness_metrics)) {
         org.settings.readiness_metrics = [...new Set(settings.readiness_metrics.map(String))];
+      }
+      if (Array.isArray(settings.wearable_priority)) {
+        org.settings.wearable_priority = providerOrder(settings.wearable_priority);
       }
     }
     for (const m of store.fixture.me.memberships) if (m.org.id === org.id) m.org = clone(org);

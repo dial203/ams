@@ -5,6 +5,7 @@
  */
 import {
   WEARABLE_METRICS,
+  WEARABLE_PROVIDER_DEFAULT_ORDER,
   addDays,
   dateRange,
   isISODate,
@@ -16,7 +17,7 @@ import {
   type WearableStatus,
 } from "@ams/shared";
 import { isFixtureError } from "../fixture";
-import { HttpError, fail, has, json, noContent, paginate, replay, requiredString } from "../http";
+import { HttpError, fail, has, invalidBody, json, noContent, paginate, providerOrder, replay, requiredString } from "../http";
 import { route, type Ctx, type RouteDef } from "../router";
 import { newId, type DemoStore } from "../store";
 import { listResponse } from "./submissions";
@@ -42,14 +43,39 @@ function range(ctx: Ctx): [string, string] {
   return [start, end];
 }
 
-/** Latest value on or before `date` within the readiness window, from the precomputed series. */
-function derivedCell(store: DemoStore, slug: string, athleteId: string, date: string): ReadinessCell {
+/**
+ * Latest value on or before `date` within the readiness window, from the precomputed series. The
+ * demo has no raw data to explain an empty cell with, so it reports the metric's last value as
+ * "stale" (or "no_data").
+ */
+function derivedCell(store: DemoStore, metric: MetricDefinition, athleteId: string, date: string): ReadinessCell {
   for (let back = 0; back <= READINESS_WINDOW_DAYS; back++) {
     const d = addDays(date, -back);
-    const p = store.point(slug, athleteId, d);
-    if (p && p[1] !== null) return { value: p[1], flag: p[2], date: p[0] };
+    const p = store.point(metric.slug, athleteId, d);
+    if (p && p[1] !== null) return { value: p[1], flag: p[2], date: p[0], missing: null };
   }
-  return { value: null, flag: null, date: null };
+  let last: string | null = null;
+  for (let d = addDays(date, -READINESS_WINDOW_DAYS - 1); d >= store.fixture.data_start; d = addDays(d, -1)) {
+    const p = store.point(metric.slug, athleteId, d);
+    if (p && p[1] !== null) {
+      last = p[0];
+      break;
+    }
+  }
+  return {
+    value: null,
+    flag: null,
+    date: null,
+    missing: {
+      reason: last ? "stale" : "no_data",
+      source: metric.source,
+      last_date: last,
+      have: null,
+      need: null,
+      window: null,
+      same_source: false,
+    },
+  };
 }
 
 function readiness(ctx: Ctx) {
@@ -74,12 +100,13 @@ function readiness(ctx: Ctx) {
     const cells: Record<string, ReadinessCell> = {};
     for (const m of columns) {
       const fromBoard = store.changedMetrics.has(m.slug) ? undefined : exported?.cells[m.slug];
-      cells[m.slug] = fromBoard ?? derivedCell(store, m.slug, a.id, date);
+      cells[m.slug] = fromBoard ?? derivedCell(store, m, a.id, date);
     }
     return {
       athlete: { id: a.id, display_name: a.display_name, code: a.code, position: a.position },
       cells,
       due_forms: exported?.due_forms ?? 0,
+      scheduled_forms: exported?.scheduled_forms ?? 0,
     };
   });
   return json({ date, group_id: groupId, columns, rows });
@@ -100,6 +127,28 @@ function series(ctx: Ctx) {
     return p ? { date, value: p[1], flag: p[2], source: p[3] } : { date, value: null, flag: null, source: null };
   });
   return json({ metric, athlete_id: athlete.id, points });
+}
+
+/** The exported status, with this tab's ranking changes applied. */
+function wearableStatus(store: DemoStore, a: { id: string; ow_user_id: string | null }): WearableStatus {
+  const recorded = store.fixture.wearables.status[a.id];
+  const base: WearableStatus =
+    recorded === undefined
+      ? {
+          linked: a.ow_user_id !== null,
+          ow_user_id: a.ow_user_id,
+          connections: [],
+          priority: null,
+          effective_priority: [],
+          sources: [],
+          history_synced_at: null,
+        }
+      : replay(recorded);
+  const priority = store.wearablePriority.has(a.id) ? store.wearablePriority.get(a.id)! : base.priority;
+  const head = priority ?? store.org.settings.wearable_priority ?? [];
+  const effective = [...head, ...WEARABLE_PROVIDER_DEFAULT_ORDER.filter((p) => !head.includes(p))];
+  const rank = (p: string) => (effective.includes(p) ? effective.indexOf(p) : effective.length);
+  return { ...base, priority, effective_priority: effective, sources: [...base.sources].sort((x, y) => rank(x) - rank(y)) };
 }
 
 function sourceKnown(store: DemoStore, source: string): boolean {
@@ -200,11 +249,22 @@ export const insightRoutes: RouteDef[] = [
     store.requireStaff();
     return json(replay(store.fixture.wearables.providers));
   }),
-  route("GET", `${ORG}/athletes/:id/wearables`, ({ store, params }) => {
+  route("GET", `${ORG}/athletes/:id/wearables`, ({ store, params }) => json(wearableStatus(store, store.athlete(params.id!)))),
+  route("PUT", `${ORG}/athletes/:id/wearables/priority`, ({ store, params, body: getBody }) => {
     const a = store.athlete(params.id!);
-    const recorded = store.fixture.wearables.status[a.id];
-    const fallback: WearableStatus = { linked: a.ow_user_id !== null, ow_user_id: a.ow_user_id, connections: [] };
-    return json(recorded === undefined ? fallback : replay(recorded));
+    if (!store.rights(a.id)?.write) throw fail(403, "write access to the athlete required");
+    const body = getBody();
+    if (!has(body, "providers")) throw invalidBody("providers", "Field required", "missing");
+    const providers = body.providers === null ? null : Array.isArray(body.providers) ? providerOrder(body.providers, "providers") : undefined;
+    if (providers === undefined) throw invalidBody("providers", "Input should be a valid list", "list_type");
+    store.wearablePriority.set(a.id, providers && providers.length ? providers : null);
+    return json(wearableStatus(store, a));
+  }),
+  route("POST", `${ORG}/athletes/:id/wearables/history`, ({ store, params }) => {
+    const a = store.athlete(params.id!);
+    if (!store.rights(a.id)?.write) throw fail(403, "write access to the athlete required");
+    if (a.ow_user_id === null) throw fail(409, "athlete is not linked to Open Wearables");
+    throw owNotConfigured(store);
   }),
   ...(["link", "connect"] as const).map((action) =>
     route("POST", `${ORG}/athletes/:id/wearables/${action}`, ({ store, params }) => {

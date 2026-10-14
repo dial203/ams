@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.schemas.common import AccessRole, ApiModel, GroupKind, OrgRole
+from app.schemas.common import AccessRole, ApiModel, GroupKind, OrgRole, check_provider_order
 from app.security import MIN_PASSWORD_LENGTH
 from app.timeutil import is_valid_timezone
 
@@ -31,6 +31,8 @@ class Terminology(BaseModel):
 class OrgSettings(BaseModel):
     terminology: Terminology = Field(default_factory=Terminology)
     readiness_metrics: list[str] = Field(default_factory=list)
+    # wearable provider ranking for every athlete without their own (empty: Open Wearables' default order)
+    wearable_priority: list[str] = Field(default_factory=list)
 
 
 class OrganizationOut(BaseModel):
@@ -52,6 +54,9 @@ class TerminologyUpdate(BaseModel):
 class OrgSettingsUpdate(BaseModel):
     terminology: TerminologyUpdate | None = None
     readiness_metrics: list[str] | None = None
+    wearable_priority: list[str] | None = None
+
+    _providers = field_validator("wearable_priority")(check_provider_order)
 
 
 class OrganizationUpdate(BaseModel):

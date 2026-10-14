@@ -41,6 +41,7 @@ export const org: Organization = {
   settings: {
     terminology: { athlete: "Rower", athletes: "Rowers", group: "Crew", groups: "Crews" },
     readiness_metrics: [],
+    wearable_priority: [],
   },
   created_at: "2026-01-01T00:00:00Z",
 };
@@ -150,7 +151,15 @@ export const providers: WearableProvider[] = [
   { provider: "apple", name: "Apple Health", enabled: true, kind: "sdk", icon_url: null },
 ];
 
-export const emptyWearables: WearableStatus = { linked: true, ow_user_id: "ow-1", connections: [] };
+export const emptyWearables: WearableStatus = {
+  linked: true,
+  ow_user_id: "ow-1",
+  connections: [],
+  priority: null,
+  effective_priority: ["apple", "garmin"],
+  sources: [],
+  history_synced_at: null,
+};
 
 export function metricSeries(slug: string, name: string, values: (number | null)[]): MetricSeries {
   return {

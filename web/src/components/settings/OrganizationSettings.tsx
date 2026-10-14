@@ -15,7 +15,9 @@ import { useApi } from "@/lib/api-context";
 import { toastError } from "@/lib/errors";
 import { sameJson } from "@/lib/json";
 import { useOrg } from "@/lib/org";
-import { useMetrics } from "@/lib/queries";
+import { useMetrics, useWearableProviders } from "@/lib/queries";
+import { ProviderRanking } from "@/components/wearables/ProviderRanking";
+import { DEFAULT_PROVIDER_ORDER, providerLabel } from "@/lib/wearables";
 
 const PRESETS: { label: string; t: Terminology }[] = [
   { label: "Sport", t: { athlete: "Athlete", athletes: "Athletes", group: "Group", groups: "Groups" } },
@@ -28,6 +30,7 @@ interface Draft {
   timezone: string;
   terminology: Terminology;
   readiness: string[];
+  wearable: string[];
 }
 
 function fromOrg(org: Organization): Draft {
@@ -36,14 +39,16 @@ function fromOrg(org: Organization): Draft {
     timezone: org.timezone,
     terminology: { ...DEFAULT_TERMINOLOGY, ...(org.settings.terminology ?? {}) },
     readiness: [...(org.settings.readiness_metrics ?? [])],
+    wearable: [...(org.settings.wearable_priority ?? [])],
   };
 }
 
 export function OrganizationSettings() {
   const api = useApi();
   const qc = useQueryClient();
-  const { org, orgId, isAdmin } = useOrg();
+  const { org, orgId, isAdmin, terms } = useOrg();
   const metrics = useMetrics();
+  const providers = useWearableProviders();
   const [d, setD] = useState<Draft>(() => fromOrg(org));
   const original = fromOrg(org);
   const dirty = !sameJson(d, original);
@@ -54,7 +59,7 @@ export function OrganizationSettings() {
       const body: OrganizationUpdate = {
         name: d.name.trim(),
         timezone: d.timezone,
-        settings: { terminology: d.terminology, readiness_metrics: d.readiness },
+        settings: { terminology: d.terminology, readiness_metrics: d.readiness, wearable_priority: d.wearable },
       };
       return api.orgs.update(orgId, body);
     },
@@ -62,6 +67,8 @@ export function OrganizationSettings() {
       qc.setQueryData(queryKeys.orgs.detail(orgId), o);
       qc.setQueryData<Me>(queryKeys.me(), (me) => (me ? { ...me, memberships: me.memberships.map((m) => (m.org.id === o.id ? { ...m, org: o } : m)) } : me));
       void qc.invalidateQueries({ queryKey: queryKeys.dashboards.all(orgId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.wearables.all(orgId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.metrics.allSeries(orgId) });
       setD(fromOrg(o));
       toast.success("Organization settings saved");
     },
@@ -176,6 +183,36 @@ export function OrganizationSettings() {
               <Plus /> Add
             </Button>
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Wearable sources</CardTitle>
+            <CardDescription>
+              When someone’s data comes from more than one provider, each day’s value comes from the first provider in this
+              list that has one. A {terms.athlete.toLowerCase()}’s Wearables tab can set their own order. Changes apply to stored
+              data at once.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 py-4">
+          {d.wearable.length === 0 && (
+            <p className="text-sm text-muted-foreground">No ranking set: Open Wearables’ default order applies.</p>
+          )}
+          <ProviderRanking
+            value={d.wearable}
+            onChange={(wearable) => setD({ ...d, wearable })}
+            providers={providers.data}
+            label="Wearable providers in order"
+          />
+          <p className="text-xs text-muted-foreground">
+            {d.wearable.length > 0 ? "Then, for providers not listed: " : "Default order: "}
+            {DEFAULT_PROVIDER_ORDER.filter((p) => !d.wearable.includes(p))
+              .map((p) => providerLabel(p, providers.data))
+              .join(", ")}
+            .
+          </p>
         </CardContent>
       </Card>
       {isAdmin && (

@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.integrations.open_wearables.client import OpenWearablesClient
-from app.integrations.open_wearables.daily import WEARABLE_METRICS, DailyPoint, build_daily_points
+from app.integrations.open_wearables.daily import (
+    WEARABLE_METRICS,
+    DailyPoint,
+    build_daily_points,
+    provider_order,
+    provider_rank,
+)
 from app.integrations.open_wearables.errors import OpenWearablesConflictError, OpenWearablesNotConfiguredError
 from app.models import Athlete, Organization, WearableDaily
 from app.schemas.domain import (
@@ -53,13 +59,32 @@ def link_athlete(db: Session, client: OpenWearablesClient, athlete: Athlete) -> 
     return user.id
 
 
-def wearable_status(client: OpenWearablesClient | None, athlete: Athlete) -> WearableStatus:
+def athlete_provider_order(athlete: Athlete, org: Organization) -> list[str]:
+    from app.services.orgs import org_settings
+
+    return provider_order(athlete.wearable_priority, org_settings(org).wearable_priority)
+
+
+def wearable_status(
+    db: Session, client: OpenWearablesClient | None, athlete: Athlete, org: Organization
+) -> WearableStatus:
+    order = athlete_provider_order(athlete, org)
+    have = db.scalars(select(WearableDaily.provider).where(WearableDaily.athlete_id == athlete.id).distinct()).all()
+    common = {
+        "priority": athlete.wearable_priority,
+        "effective_priority": order,
+        "sources": sorted(have, key=lambda p: provider_rank(order, p)),
+        "history_synced_at": athlete.wearable_history_at,
+    }
     if athlete.ow_user_id is None or client is None:
-        return WearableStatus(linked=athlete.ow_user_id is not None, ow_user_id=athlete.ow_user_id, connections=[])
+        return WearableStatus(
+            linked=athlete.ow_user_id is not None, ow_user_id=athlete.ow_user_id, connections=[], **common
+        )
     connections = client.list_connections(athlete.ow_user_id)
     return WearableStatus(
         linked=True,
         ow_user_id=athlete.ow_user_id,
+        **common,
         connections=[
             WearableConnectionOut(
                 connection_id=c.id,
@@ -184,19 +209,37 @@ def refresh_athlete(
     return store_points(db, athlete, points, start, end)
 
 
+def pull_history(db: Session, client: OpenWearablesClient, athlete: Athlete, org: Organization) -> int:
+    """Copy ``settings.wearable_history_days`` of Open Wearables data and record when."""
+    updated = refresh_athlete(db, client, athlete, org, settings.wearable_history_days)
+    athlete.wearable_history_at = utcnow()
+    return updated
+
+
 def daily_points(
     db: Session,
-    athlete_id: uuid.UUID,
+    athlete: Athlete,
+    org: Organization,
     start: dt.date,
     end: dt.date,
     metrics: list[str] | None,
+    all_sources: bool = False,
 ) -> list[WearableDailyPoint]:
+    """One point per day and metric from the best-ranked provider, or every provider's."""
     q = select(WearableDaily).where(
-        WearableDaily.athlete_id == athlete_id, WearableDaily.local_date >= start, WearableDaily.local_date <= end
+        WearableDaily.athlete_id == athlete.id, WearableDaily.local_date >= start, WearableDaily.local_date <= end
     )
     if metrics:
         q = q.where(WearableDaily.metric.in_(metrics))
-    rows = db.scalars(q.order_by(WearableDaily.local_date, WearableDaily.metric, WearableDaily.provider)).all()
+    rows = list(db.scalars(q.order_by(WearableDaily.local_date, WearableDaily.metric, WearableDaily.provider)))
+    if not all_sources:
+        order = athlete_provider_order(athlete, org)
+        best: dict[tuple[dt.date, str], WearableDaily] = {}
+        for r in rows:
+            cur = best.get((r.local_date, r.metric))
+            if cur is None or provider_rank(order, r.provider) < provider_rank(order, cur.provider):
+                best[(r.local_date, r.metric)] = r
+        rows = [r for r in rows if best[(r.local_date, r.metric)] is r]
     return [
         WearableDailyPoint(
             local_date=r.local_date, metric=r.metric, value=r.value, unit=r.unit, provider=r.provider, device=r.device
