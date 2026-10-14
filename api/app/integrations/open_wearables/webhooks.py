@@ -42,6 +42,11 @@ REFRESH_EVENTS = frozenset(
 )
 
 
+# sync.completed sources that deliver history (Garmin's historical backfill, an Apple Health export):
+# AMS copies the athlete's full history window after them, not only the last days.
+HISTORY_SOURCES = frozenset({"backfill", "xml_import"})
+
+
 class WebhookVerificationError(Exception):
     pass
 

@@ -17,6 +17,7 @@ from app.schemas.common import (
     Sensitivity,
     Sex,
     SubmissionSource,
+    check_provider_order,
 )
 from app.timeutil import is_valid_timezone
 
@@ -433,6 +434,20 @@ class WearableStatus(BaseModel):
     linked: bool
     ow_user_id: uuid.UUID | None
     connections: list[WearableConnectionOut]
+    priority: list[str] | None  # the athlete's own provider ranking; null: the organization's
+    effective_priority: list[str]  # the ranking in force, the default order appended
+    sources: list[str]  # providers with daily data in AMS for this athlete, best ranked first
+    history_synced_at: dt.datetime | None  # last full history copy from Open Wearables
+
+
+class WearablePriorityUpdate(BaseModel):
+    providers: list[str] | None  # null: use the organization's ranking
+
+    _providers = field_validator("providers")(check_provider_order)
+
+
+class HistoryPullOut(BaseModel):
+    days: int
 
 
 class ConnectRequest(BaseModel):

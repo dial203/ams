@@ -8,7 +8,7 @@ import {
   type ReadinessMissing,
 } from "@ams/shared";
 import { Fragment, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, ClipboardList, Clock3, FileX, Hourglass, Lock, Unlink, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarX, ClipboardList, Clock3, FileX, Hourglass, Lock, Unlink, type LucideIcon } from "lucide-react";
 import { FlagIcon } from "@/components/readiness/FlagIcon";
 import { missingLabel, missingText } from "@/components/readiness/missing";
 import { FLAG_TEXT, flagCellClass } from "@/lib/flags";
@@ -132,8 +132,9 @@ export function ReadinessTable({ board, sort, dir, onSortChange, filter, onRowCl
                     <span className="sr-only"> forms due</span>
                   </Badge>
                 ) : row.scheduled_forms === 0 ? (
-                  <span className="text-[11px] text-muted-foreground" title="No forms are scheduled for this athlete">
-                    none scheduled
+                  <span className="inline-flex text-muted-foreground/70" title="No forms are scheduled for this athlete">
+                    <CalendarX aria-hidden className="size-3.5" />
+                    <span className="sr-only">No forms scheduled</span>
                   </span>
                 ) : (
                   <span className="text-muted-foreground/60" aria-label="No forms due" title="Nothing due today">

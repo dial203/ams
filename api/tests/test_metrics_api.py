@@ -472,3 +472,27 @@ def test_readiness_restricted_cells_reveal_nothing(client: TestClient, db: Sessi
     assert _missing(admin_board, "P-1", "med_val") is None
     missing = _missing(admin_board, "P-2", "med_val")
     assert missing is not None and missing["reason"] == "no_data"
+
+
+def test_wearable_metrics_follow_the_provider_ranking(client: TestClient, db: Session) -> None:
+    org = f.org(db)
+    admin = f.member(db, org, "admin")
+    a = f.athlete(db, org)
+    for n in range(3):
+        f.wearable(db, a, day(n), "sleep_duration_min", 400 + n, provider="garmin", device="Fenix 8", unit="min")
+    for n in (0, 2):  # no Oura night on day 1
+        f.wearable(db, a, day(n), "sleep_duration_min", 450 + n, provider="oura", unit="min")
+
+    def values() -> list[tuple[float | None, str | None]]:
+        pts = series(client, org.id, admin.headers, "sleep_duration", a.id, day(0), day(2))["points"]
+        return [(p["value"], p["source"]) for p in pts]
+
+    # default order (Open Wearables'): Garmin before Oura
+    assert values() == [(400, "garmin/Fenix 8"), (401, "garmin/Fenix 8"), (402, "garmin/Fenix 8")]
+    # the organization's ranking, with Garmin filling the day Oura has nothing
+    client.patch(f"{API}/orgs/{org.id}", headers=admin.headers, json={"settings": {"wearable_priority": ["oura"]}})
+    assert values() == [(450, "oura/Oura Ring Gen3"), (401, "garmin/Fenix 8"), (452, "oura/Oura Ring Gen3")]
+    # the athlete's own ranking wins over the organization's
+    a.wearable_priority = ["garmin", "oura"]
+    db.commit()
+    assert values()[0] == (400, "garmin/Fenix 8")

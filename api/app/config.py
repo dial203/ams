@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     ow_app_secret: str | None = None
     ow_webhook_secret: str | None = None
     ow_timeout_seconds: float = 10.0
+    # days of wearable history copied from Open Wearables on an athlete's first sync, after a
+    # provider backfill or import, and on request
+    wearable_history_days: int = 365
 
     ams_upload_dir: str = "./uploads"
     upload_ttl_hours: int = 24

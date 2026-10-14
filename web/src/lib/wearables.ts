@@ -1,4 +1,4 @@
-import { isApiError, type WearableMetric } from "@ams/shared";
+import { WEARABLE_PROVIDER_DEFAULT_ORDER, isApiError, type WearableMetric, type WearableProvider } from "@ams/shared";
 
 export const WEARABLE_METRIC_LABELS: Record<WearableMetric, string> = {
   sleep_duration_min: "Sleep duration",
@@ -48,4 +48,29 @@ export function relativeTime(iso: string | null | undefined, now: number = Date.
 /** The API answers 503 when Open Wearables is not configured. */
 export function isNotConfigured(e: unknown): boolean {
   return isApiError(e) && e.status === 503;
+}
+
+/** Open Wearables' default provider order (appended after an organization's or athlete's own ranking). */
+export const DEFAULT_PROVIDER_ORDER = WEARABLE_PROVIDER_DEFAULT_ORDER;
+
+const PROVIDER_NAMES: Record<string, string> = {
+  apple: "Apple Health",
+  garmin: "Garmin",
+  polar: "Polar",
+  suunto: "Suunto",
+  whoop: "WHOOP",
+  fitbit: "Fitbit",
+  google_health: "Google Health",
+  health_connect: "Health Connect",
+  oura: "Oura",
+  samsung: "Samsung Health",
+  sensorbio: "Sensorbio",
+  strava: "Strava",
+  ultrahuman: "Ultrahuman",
+  withings: "Withings",
+};
+
+/** Display name of a provider key: Open Wearables' name when known, else a built-in one. */
+export function providerLabel(key: string, providers?: readonly WearableProvider[]): string {
+  return providers?.find((p) => p.provider === key)?.name ?? PROVIDER_NAMES[key] ?? key;
 }

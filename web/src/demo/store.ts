@@ -85,6 +85,8 @@ export class DemoStore {
   readonly uploads = new Map<UUID, DemoUpload>();
   /** Metric slugs created or redefined in the demo (their precomputed series no longer apply). */
   readonly changedMetrics = new Set<string>();
+  /** Athletes' wearable source rankings changed in this tab (null: back to the organization's). */
+  readonly wearablePriority = new Map<UUID, string[] | null>();
   private seriesIndex = new Map<string, Map<string, CompactPoint>>();
   private boardIndex = new Map<string, Map<UUID, ReadinessRow>>();
 

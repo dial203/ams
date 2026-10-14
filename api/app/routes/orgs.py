@@ -47,6 +47,8 @@ def update_org(body: OrganizationUpdate, p: AdminDep, db: DbSession) -> Organiza
             current["terminology"].update(body.settings.terminology.model_dump(exclude_none=True))
         if body.settings.readiness_metrics is not None:
             current["readiness_metrics"] = list(dict.fromkeys(body.settings.readiness_metrics))
+        if body.settings.wearable_priority is not None:
+            current["wearable_priority"] = body.settings.wearable_priority
         org.settings = current
     audit.record(
         db,

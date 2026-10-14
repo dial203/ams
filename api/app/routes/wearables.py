@@ -10,20 +10,29 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 
+from app import audit
 from app.config import settings
 from app.database import DbSession
 from app.deps import PrincipalDep, StaffDep
 from app.integrations.open_wearables.client import OpenWearablesClient
 from app.integrations.open_wearables.daily import WEARABLE_METRICS
 from app.integrations.open_wearables.errors import OpenWearablesNotConfiguredError
-from app.integrations.open_wearables.webhooks import REFRESH_EVENTS, WebhookVerificationError, parse_event, verify
+from app.integrations.open_wearables.webhooks import (
+    HISTORY_SOURCES,
+    REFRESH_EVENTS,
+    WebhookVerificationError,
+    parse_event,
+    verify,
+)
 from app.models import Athlete
 from app.permissions import Principal
 from app.schemas.domain import (
     ConnectRequest,
     ConnectResponse,
+    HistoryPullOut,
     RefreshResult,
     WearableDailyPoint,
+    WearablePriorityUpdate,
     WearableProviderOut,
     WearableStatus,
 )
@@ -65,10 +74,49 @@ def list_providers(p: StaffDep) -> list[WearableProviderOut]:
 @router.get("/orgs/{org_id}/athletes/{athlete_id}/wearables", response_model=WearableStatus)
 def athlete_wearables(athlete_id: uuid.UUID, p: PrincipalDep, db: DbSession) -> WearableStatus:
     athlete, _ = get_visible_athlete(db, p, athlete_id)
+    return _status(db, p, athlete)
+
+
+def _status(db: DbSession, p: Principal, athlete: Athlete) -> WearableStatus:
     if athlete.ow_user_id is None:
-        return svc.wearable_status(None, athlete)
+        return svc.wearable_status(db, None, athlete, p.org)
     with OpenWearablesClient.from_settings() as client:
-        return svc.wearable_status(client, athlete)
+        return svc.wearable_status(db, client, athlete, p.org)
+
+
+@router.put("/orgs/{org_id}/athletes/{athlete_id}/wearables/priority", response_model=WearableStatus)
+def set_priority(athlete_id: uuid.UUID, body: WearablePriorityUpdate, p: PrincipalDep, db: DbSession) -> WearableStatus:
+    athlete = _require_write(p, athlete_id, db)
+    before = athlete.wearable_priority
+    athlete.wearable_priority = body.providers or None
+    audit.record(
+        db,
+        org_id=p.org_id,
+        user_id=p.user_id,
+        action="athlete.wearable_priority",
+        entity_type="athlete",
+        entity_id=athlete.id,
+        details={"before": before, "after": athlete.wearable_priority},
+    )
+    db.commit()
+    return _status(db, p, athlete)
+
+
+@router.post(
+    "/orgs/{org_id}/athletes/{athlete_id}/wearables/history",
+    response_model=HistoryPullOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def pull_history(athlete_id: uuid.UUID, p: PrincipalDep, db: DbSession) -> HistoryPullOut:
+    athlete = _require_write(p, athlete_id, db)
+    if athlete.ow_user_id is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="athlete is not linked to Open Wearables")
+    if not settings.ow_configured:
+        raise OpenWearablesNotConfiguredError("OW_BASE_URL / OW_API_KEY are not configured")
+    from app.tasks import refresh_athlete_wearables
+
+    refresh_athlete_wearables.delay(str(athlete.id), history=True)
+    return HistoryPullOut(days=settings.wearable_history_days)
 
 
 @router.post("/orgs/{org_id}/athletes/{athlete_id}/wearables/link", response_model=WearableStatus)
@@ -77,7 +125,7 @@ def link(athlete_id: uuid.UUID, p: PrincipalDep, db: DbSession) -> WearableStatu
     with OpenWearablesClient.from_settings() as client:
         svc.link_athlete(db, client, athlete)
         db.commit()
-        return svc.wearable_status(client, athlete)
+        return svc.wearable_status(db, client, athlete, p.org)
 
 
 @router.post("/orgs/{org_id}/athletes/{athlete_id}/wearables/connect", response_model=ConnectResponse)
@@ -110,6 +158,7 @@ def daily(
     start: Annotated[dt.date | None, Query()] = None,
     end: Annotated[dt.date | None, Query()] = None,
     metrics: Annotated[str | None, Query(description="Comma-separated WearableMetric names")] = None,
+    all_sources: Annotated[bool, Query(description="Every provider's value, not only the best ranked")] = False,
 ) -> list[WearableDailyPoint]:
     athlete, _ = get_visible_athlete(db, p, athlete_id)
     end = end or p.today
@@ -119,7 +168,7 @@ def daily(
         unknown = [m for m in names if m not in WEARABLE_METRICS]
         if unknown:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"unknown wearable metric(s): {', '.join(unknown)}")
-    return svc.daily_points(db, athlete.id, start, end, names)
+    return svc.daily_points(db, athlete, p.org, start, end, names, all_sources)
 
 
 async def _raw_body(request: Request) -> bytes:
@@ -139,11 +188,19 @@ def ow_webhook(request: Request, db: DbSession, body: Annotated[bytes, Depends(_
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid webhook signature") from exc
     if event.type not in REFRESH_EVENTS or event.ow_user_id is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-    athlete_ids = db.scalars(
-        select(Athlete.id).where(Athlete.ow_user_id == event.ow_user_id, Athlete.status != "archived")
+    athletes = db.scalars(
+        select(Athlete).where(Athlete.ow_user_id == event.ow_user_id, Athlete.status != "archived")
     ).all()
     from app.tasks import refresh_athlete_wearables
 
-    for aid in athlete_ids:  # unknown OW users: nothing to do
-        refresh_athlete_wearables.delay(str(aid), 7)
+    if event.type == "connection.created":
+        # the new provider's history reaches OW over the next minutes to hours: copy history on the
+        # next event for this athlete (or the nightly run), not now
+        for a in athletes:
+            a.wearable_history_at = None
+        db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    history = True if event.type == "sync.completed" and event.data.get("source") in HISTORY_SOURCES else None
+    for a in athletes:  # unknown OW users: nothing to do
+        refresh_athlete_wearables.delay(str(a.id), 7, history)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

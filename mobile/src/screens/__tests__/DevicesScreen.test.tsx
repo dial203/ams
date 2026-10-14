@@ -11,8 +11,8 @@ import { DevicesScreen } from "../DevicesScreen";
 const openAuthSession = WebBrowser.openAuthSessionAsync as jest.Mock;
 
 const garminConnected: WearableStatus = {
-  linked: true,
-  ow_user_id: "ow-1",
+  ...emptyWearables,
+  sources: ["garmin"],
   connections: [
     {
       connection_id: "c1",

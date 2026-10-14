@@ -160,7 +160,7 @@ describe("readiness board", () => {
     expect(cells[1]).toHaveAttribute("data-missing", "building");
     expect(cells[1]).toHaveTextContent("8/21d");
     expect(within(cells[1]!).getByText(/^Baseline building: 8 of 21 days from the same device/)).toHaveClass("sr-only");
-    expect(cells[2]).toHaveTextContent("none scheduled");
+    expect(within(cells[2]!).getByText("No forms scheduled")).toHaveClass("sr-only");
   });
 
   it("summarises red, amber, missing and due counts", () => {

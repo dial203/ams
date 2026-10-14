@@ -33,9 +33,11 @@ def org_settings(org: Organization) -> OrgSettings:
     raw = org.settings or {}
     term = {**Terminology().model_dump(), **(raw.get("terminology") or {})}
     readiness = raw.get("readiness_metrics")
+    priority = raw.get("wearable_priority")
     return OrgSettings(
         terminology=Terminology(**term),
         readiness_metrics=list(readiness) if isinstance(readiness, list) else list(DEFAULT_READINESS_METRICS),
+        wearable_priority=[str(p) for p in priority] if isinstance(priority, list) else [],
     )
 
 

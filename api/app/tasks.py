@@ -18,8 +18,14 @@ log = logging.getLogger(__name__)
 
 
 @celery_app.task(name="ams.refresh_athlete_wearables")
-def refresh_athlete_wearables(athlete_id: str, days: int = 7) -> int:
-    """Pull the last ``days`` days of OW summaries for one athlete into wearable_daily."""
+def refresh_athlete_wearables(
+    athlete_id: str, days: int = 7, history: bool | None = None, check_connections: bool = False
+) -> int:
+    """Pull the last ``days`` days of OW summaries for one athlete into wearable_daily.
+
+    ``history`` True copies ``settings.wearable_history_days`` instead; None does so when the athlete's
+    history was never copied, or (``check_connections``) a provider was connected since the last copy.
+    """
     db = SessionLocal()
     try:
         athlete = db.get(Athlete, uuid.UUID(str(athlete_id)))
@@ -28,9 +34,21 @@ def refresh_athlete_wearables(athlete_id: str, days: int = 7) -> int:
         org = db.get(Organization, athlete.org_id)
         assert org is not None
         with OpenWearablesClient.from_settings() as client:
-            updated = wearables.refresh_athlete(db, client, athlete, org, days)
+            if history is None:
+                last = athlete.wearable_history_at
+                history = last is None or (
+                    check_connections
+                    and any(
+                        c.created_at is not None and c.created_at > last
+                        for c in client.list_connections(athlete.ow_user_id)
+                    )
+                )
+            if history:
+                updated = wearables.pull_history(db, client, athlete, org)
+            else:
+                updated = wearables.refresh_athlete(db, client, athlete, org, days)
         db.commit()
-        log.info("refreshed %d wearable rows for athlete %s", updated, athlete_id)
+        log.info("refreshed %d wearable rows for athlete %s%s", updated, athlete_id, " (history)" if history else "")
         return updated
     except (OpenWearablesError, OpenWearablesNotConfiguredError) as exc:
         db.rollback()
@@ -42,14 +60,15 @@ def refresh_athlete_wearables(athlete_id: str, days: int = 7) -> int:
 
 @celery_app.task(name="ams.refresh_all_wearables")
 def refresh_all_wearables(days: int = 7) -> int:
-    """Nightly safety net: re-pull the last ``days`` days for every linked, non-archived athlete."""
+    """Nightly safety net: re-pull the last ``days`` days for every linked, non-archived athlete, and
+    their full history when it was never copied or a provider was connected since."""
     db = SessionLocal()
     try:
         ids = db.scalars(select(Athlete.id).where(Athlete.ow_user_id.is_not(None), Athlete.status != "archived")).all()
     finally:
         db.close()
     for aid in ids:
-        refresh_athlete_wearables.delay(str(aid), days)
+        refresh_athlete_wearables.delay(str(aid), days, check_connections=True)
     return len(ids)
 
 

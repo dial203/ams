@@ -37,6 +37,8 @@ export type OrganizationSettings = {
   terminology: Terminology;
   /** Metric slugs shown on the readiness board, in order. */
   readiness_metrics: string[];
+  /** Open Wearables provider keys, best first, for athletes without their own ranking ([]: OW's default order). */
+  wearable_priority: string[];
 };
 
 export type Organization = {
@@ -314,7 +316,21 @@ export type WearableConnection = {
   devices: string[];
 };
 
-export type WearableStatus = { linked: boolean; ow_user_id: UUID | null; connections: WearableConnection[] };
+export type WearableStatus = {
+  linked: boolean;
+  ow_user_id: UUID | null;
+  connections: WearableConnection[];
+  /** The athlete's own provider ranking; null: the organization's. */
+  priority: string[] | null;
+  /** The ranking in force: athlete's, else organization's, then OW's default order for the rest. */
+  effective_priority: string[];
+  /** Providers with daily data in AMS for this athlete, best ranked first. */
+  sources: string[];
+  /** Last copy of the full history window (WEARABLE_HISTORY_DAYS) from OW. */
+  history_synced_at: ISODateTime | null;
+};
+/** Provider keys ([a-z0-9_], max 32), best first; null: use the organization's. */
+export type WearablePriorityUpdate = { providers: string[] | null };
 
 export type ConnectRequest = {
   provider: string;
@@ -356,6 +372,27 @@ export type WearableMetric =
   | "vigorous_min"
   | "weight_kg"
   | "body_fat_pct";
+
+/**
+ * Open Wearables' default provider order, which AMS appends after an organization's or athlete's own
+ * ranking (DEFAULT_PROVIDER_PRIORITY in api/app/integrations/open_wearables/daily.py).
+ */
+export const WEARABLE_PROVIDER_DEFAULT_ORDER: readonly string[] = [
+  "apple",
+  "garmin",
+  "polar",
+  "suunto",
+  "whoop",
+  "fitbit",
+  "google_health",
+  "health_connect",
+  "oura",
+  "samsung",
+  "sensorbio",
+  "strava",
+  "ultrahuman",
+  "withings",
+];
 
 export const WEARABLE_METRICS: readonly WearableMetric[] = [
   "sleep_duration_min",
@@ -546,6 +583,7 @@ export type SubmissionUpdate = { values?: Record<string, unknown>; observed_at?:
 export type SelfSubmissionCreate = Omit<SubmissionCreate, "athlete_id">;
 
 export type WearableRefreshResponse = { updated: number };
+export type WearableHistoryResponse = { days: number };
 
 // ---------------------------------------------------------------------------
 // Query parameters. `null`/`undefined` values are omitted from the URL.
@@ -587,7 +625,8 @@ export type SelfSubmissionListParams = PageParams & {
 };
 export type DateRangeParams = { start?: Opt<ISODate>; end?: Opt<ISODate> };
 export type WearableRefreshParams = { days?: Opt<number> };
-export type WearableDailyParams = DateRangeParams & { metrics?: Opt<readonly WearableMetric[]> };
+/** `all_sources`: every provider's value, not only the best ranked. */
+export type WearableDailyParams = DateRangeParams & { metrics?: Opt<readonly WearableMetric[]>; all_sources?: Opt<boolean> };
 export type MetricSeriesParams = DateRangeParams & { athlete_id: UUID };
 export type ReadinessParams = { group_id?: Opt<UUID>; date?: Opt<ISODate> };
 export type AuditListParams = PageParams & { entity_type?: Opt<string>; entity_id?: Opt<UUID> };
